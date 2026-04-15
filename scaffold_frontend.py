@@ -90,7 +90,7 @@ files = {
           <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Finano</title>
+            <title>FINANO</title>
           </head>
           <body>
             <div id="root"></div>
@@ -512,7 +512,7 @@ files = {
         import { BarChartOutlined, BulbOutlined, FileTextOutlined, LoginOutlined, TeamOutlined } from "@ant-design/icons";
         import { Layout, Menu, Typography, Button, Space } from "antd";
         import { ReactNode } from "react";
-        import { useLocation, useNavigate } from "react-router-dom";
+        import { Link, useLocation, useNavigate } from "react-router-dom";
         import { useUserStore } from "../../store/userStore";
 
         const { Header, Sider, Content } = Layout;
@@ -529,7 +529,11 @@ files = {
           return (
             <Layout style={{ minHeight: "100vh" }}>
               <Sider breakpoint="lg" collapsedWidth="0">
-                <div style={{ color: "#fff", padding: 20, fontSize: 20, fontWeight: 700 }}>Finano</div>
+                <div style={{ padding: "14px 12px 18px", textAlign: "center", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  <Link to="/" style={{ lineHeight: 0 }} aria-label="FINANO 首页">
+                    <img src="/brand/finano-mark-dark-bg.png" alt="FINANO" style={{ height: 36, width: "auto", maxWidth: "100%", objectFit: "contain", display: "inline-block" }} />
+                  </Link>
+                </div>
                 <Menu
                   theme="dark"
                   selectedKeys={[location.pathname]}
@@ -553,9 +557,9 @@ files = {
                     justifyContent: "space-between"
                   }}
                 >
-                  <Typography.Title level={4} style={{ margin: 0 }}>
-                    Finano 课程项目演示版
-                  </Typography.Title>
+                  <Link to="/" style={{ lineHeight: 0, display: "flex", alignItems: "center" }} aria-label="FINANO 首页">
+                    <img src="/brand/finano-wordmark-light-bg.png" alt="FINANO" style={{ height: 26, width: "auto", objectFit: "contain" }} />
+                  </Link>
                   <Space>
                     <Typography.Text>{currentUser?.username}</Typography.Text>
                     <Button icon={<LoginOutlined />} onClick={() => { logout(); navigate("/login"); }}>
@@ -601,9 +605,11 @@ files = {
           return (
             <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
               <Card style={{ width: 420 }}>
-                <Typography.Title level={3}>Finano</Typography.Title>
+                <div style={{ textAlign: "center", marginBottom: 20 }}>
+                  <img src="/brand/finano-wordmark-light-bg.png" alt="FINANO" style={{ height: 34, width: "auto", margin: "0 auto", display: "block", objectFit: "contain" }} />
+                </div>
                 <Typography.Paragraph type="secondary">
-                  交易记录、复盘分析、热点追踪与社区互动的一体化演示系统。
+                  交易记录、复盘分析、热点追踪与社区互动的一体化工作台。
                 </Typography.Paragraph>
                 <Tabs
                   items={[

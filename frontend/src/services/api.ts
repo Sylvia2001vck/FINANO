@@ -1,7 +1,12 @@
 import axios from "axios";
+import type { InternalAxiosRequestConfig } from "axios";
 import { message } from "antd";
 import { useAppStore } from "../store/appStore";
 import { useUserStore } from "../store/userStore";
+
+function skipGlobalLoading(config: InternalAxiosRequestConfig): boolean {
+  return Boolean(config.skipGlobalLoading);
+}
 
 export interface ApiEnvelope<T> {
   success: boolean;
@@ -14,7 +19,9 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  useAppStore.getState().incLoading();
+  if (!skipGlobalLoading(config)) {
+    useAppStore.getState().incLoading();
+  }
   const token = useUserStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -24,11 +31,16 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => {
-    useAppStore.getState().decLoading();
+    if (!skipGlobalLoading(response.config)) {
+      useAppStore.getState().decLoading();
+    }
     return response;
   },
   (error) => {
-    useAppStore.getState().decLoading();
+    const cfg = error?.config as InternalAxiosRequestConfig | undefined;
+    if (!skipGlobalLoading(cfg ?? {})) {
+      useAppStore.getState().decLoading();
+    }
     const status = error?.response?.status;
     const url = String(error?.config?.url ?? "");
     const isAuthEntry = url.includes("/auth/login") || url.includes("/auth/register");

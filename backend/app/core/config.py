@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from typing import List
 
@@ -28,6 +30,10 @@ class Settings(BaseSettings):
     baidu_ocr_api_key: str = ""
     baidu_ocr_secret_key: str = ""
     dashscope_api_key: str = ""
+    # 国际/新加坡控制台创建的 Key 通常需走国际域名；为 true 时等价于 DASHSCOPE_BASE_URL 指向 dashscope-intl
+    dashscope_use_intl: bool = Field(default=False, alias="DASHSCOPE_USE_INTL")
+    # 显式覆盖 DashScope OpenAPI 根路径（须含 /api/v1，或只填 host 由程序补全）。留空则国内用 SDK 默认、国际用 USE_INTL
+    dashscope_base_url: str = Field(default="", alias="DASHSCOPE_BASE_URL")
     # 优先使用 FINANCE_MODEL_NAME（如 qwen3-max、qwen-plus）；未设时回退 QWEN_FINANCE_MODEL
     finance_model_name: str = Field(default="", alias="FINANCE_MODEL_NAME")
     # 回退：DashScope 模型名（与 FINANCE_MODEL_NAME 二选一即可）
@@ -51,6 +57,8 @@ class Settings(BaseSettings):
 
     # 环境变量 FUND_LIVE_QUOTE_ENABLED=true 时合并天天基金估值 JSONP（失败则仅用静态池）
     fund_live_quote_enabled: bool = False
+    # static=内置演示池；eastmoney_full=启动后首次访问时从天天基金 fundcode_search.js 拉全市场索引（约 1.5 万+）
+    fund_catalog_mode: str = Field(default="static", alias="FUND_CATALOG_MODE")
 
     @property
     def cors_origins(self) -> List[str]:
@@ -64,6 +72,19 @@ class Settings(BaseSettings):
         """MAFB / DashScope 实际调用的模型名（通用强模型 + 金融 Prompt ≈ 垂直金融助手）。"""
         name = (self.finance_model_name or "").strip()
         return name if name else self.qwen_finance_model
+
+    @property
+    def dashscope_http_api_root(self) -> str | None:
+        """
+        传给 dashscope Python SDK 的 OpenAPI 根（通常以 /api/v1 结尾）。
+        None：不覆盖，使用 SDK 默认（中国大陆 dashscope.aliyuncs.com）。
+        """
+        raw = (self.dashscope_base_url or "").strip().rstrip("/")
+        if raw:
+            return raw if raw.endswith("/api/v1") else f"{raw}/api/v1"
+        if self.dashscope_use_intl:
+            return "https://dashscope-intl.aliyuncs.com/api/v1"
+        return None
 
 
 settings = Settings()

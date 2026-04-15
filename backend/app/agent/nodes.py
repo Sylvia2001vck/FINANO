@@ -5,10 +5,14 @@ from typing import Any
 from app.agent.fund_catalog import get_fund_by_code
 from app.agent.fund_similarity import find_similar_kline_funds
 from app.agent.llm_client import invoke_compliance_llm, invoke_finance_agent_score
-from app.agent.profiling import build_user_profile, liunian_factor
+from app.agent.profiling_mafb import build_user_profile_mafb
 from app.agent.rag_faiss import rerank_by_profile, retrieve_fund_context
 from app.agent.state import MAFBState
-from app.agent.top5 import build_position_advice, build_reasoning_chain, build_top5_recommendations
+from app.agent.top5 import (
+    build_position_advice_mafb,
+    build_reasoning_chain,
+)
+from app.services.similar_funds import similar_funds
 
 _FORBIDDEN = ("保证收益", "稳赚", "无风险", "内幕", "必涨", "只赚不赔")
 _WEIGHTS = {
@@ -24,17 +28,98 @@ def _clamp_score(value: float) -> int:
     return max(-2, min(2, int(round(value))))
 
 
+def _fbti_track_alignment_score(state: MAFBState) -> tuple[int, str]:
+    profile = state.get("user_profile") or {}
+    if profile.get("profile_mode") == "no_fbti":
+        return (
+            0,
+            "未纳入 FBTI：画像维度不包含人格-赛道偏好匹配，本项记为中性分（演示）。",
+        )
+    fund = state.get("fund_data") or {}
+    track = str(fund.get("track") or "宽基")
+    pref = str(profile.get("fund_preference_summary") or "")
+    name_fb = str(profile.get("fbti_name") or "—")
+    tags = profile.get("style_tags") or []
+    blob = pref + " ".join(str(t) for t in tags)
+    score = 0
+    if track and track in blob:
+        score = 2
+    else:
+        for piece in pref.replace("、", " ").replace("，", " ").replace(",", " ").split():
+            p = piece.strip()
+            if len(p) >= 2 and p in track:
+                score = 1
+                break
+        if score == 0 and tags:
+            if any(str(t) in track for t in tags if len(str(t)) >= 2):
+                score = 1
+    reason = (
+        f"FBTI「{name_fb}」画像中的类型/赛道偏好摘要与标的赛道「{track}」的一致性粗评（演示规则）。"
+        f"偏好摘要：{pref[:160] or '—'}。"
+    )
+    return _clamp_score(score), reason
+
+
+def _build_similarity_top5(anchor: dict[str, Any], kline_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """主表：K 线相似 TOP5，并并入演示池「统计特征余弦」相似度（与 /agent/funds/similar 同源）。"""
+    code = str(anchor.get("code") or "").strip()
+    if not code:
+        return []
+    feat_rows = similar_funds(code, top_k=40)
+    feat_map = {str(r["code"]): r for r in feat_rows}
+    if kline_rows:
+        out: list[dict[str, Any]] = []
+        for i, kr in enumerate(kline_rows[:5], start=1):
+            fc = str(kr.get("code") or "")
+            fr = feat_map.get(fc)
+            out.append(
+                {
+                    "rank": i,
+                    "code": kr.get("code"),
+                    "name": kr.get("name"),
+                    "track": kr.get("track"),
+                    "kline_similarity": kr.get("similarity"),
+                    "kline_method": kr.get("method"),
+                    "kline_window_days": kr.get("window_days"),
+                    "kline_rationale": kr.get("rationale"),
+                    "feature_similarity": (fr or {}).get("similarity"),
+                    "feature_rationale": (fr or {}).get("rationale"),
+                }
+            )
+        return out
+    return [
+        {
+            "rank": i,
+            "code": r.get("code"),
+            "name": r.get("name"),
+            "track": r.get("track"),
+            "kline_similarity": None,
+            "kline_method": None,
+            "kline_window_days": None,
+            "kline_rationale": "主基金净值序列过短，K 线相似为空；下列为统计特征相似 TOP5。",
+            "feature_similarity": r.get("similarity"),
+            "feature_rationale": r.get("rationale"),
+        }
+        for i, r in enumerate(feat_rows[:5], start=1)
+    ]
+
+
 def node_user_profiling(state: MAFBState) -> dict[str, Any]:
-    profile = build_user_profile(
-        state.get("user_birth") or "1990-01-01",
-        state.get("user_mbti") or "INTJ",
-        state.get("layout_facing"),
+    include = bool(state.get("include_fbti", True))
+    profile = build_user_profile_mafb(
+        include,
+        state.get("fbti_profile"),
         state.get("risk_preference"),
+    )
+    note = (
+        "MAFB 用户画像：已纳入账户 FBTI 与风险偏好（不含八字五行流年）。"
+        if include
+        else "MAFB 用户画像：未纳入 FBTI，风险档位仅来自账户风险偏好（演示）。"
     )
     return {
         "user_profile": profile,
         "risk_level": int(profile["risk_level"]),
-        "compliance_notes": ["用户画像已完成结构化抽取（MBTI + 出生日期特征 + 可选环境偏好）。"],
+        "compliance_notes": [note],
     }
 
 
@@ -138,52 +223,31 @@ def node_risk(state: MAFBState) -> dict[str, Any]:
 
 
 def node_kline_similar(state: MAFBState) -> dict[str, Any]:
-    """K 线 / 净值序列相似：与演示池内其他基金对齐日收益率，余弦或 DTW 相似度。"""
+    """K 线 / 净值序列相似：与池内其他基金对齐日收益率，余弦或 DTW。"""
     code = (state.get("fund_code") or "510300").strip()
-    days = 60
+    days = 80
     try:
         rows = find_similar_kline_funds(code, top_n=5, days=days, method="cosine")
     except Exception:
         rows = []
     reason = (
-        f"K线相似基金：近 {days} 个交易日对齐日收益率的余弦相似度，与演示池比较（历史形态，非预测）。"
+        f"K线相似基金：近 {days} 个交易日对齐日收益率的余弦相似度，与目录内基金比较（历史形态，非预测）。"
     )
     return {
         "kline_similar_funds": rows,
         "agent_scores": {"kline": 0},
         "agent_reasons": {"kline": reason},
-        "compliance_notes": ["K线相似度 Agent：形态相近标的（净值序列，演示）。"],
+        "compliance_notes": ["K线相似度：形态相近标的（净值序列，演示）。"],
     }
-
-
-def _profiling_alignment_score(state: MAFBState) -> tuple[int, str]:
-    profile = state.get("user_profile") or {}
-    fund = state.get("fund_data") or {}
-    dominant = profile.get("dominant_element") or "土"
-    track = fund.get("track") or "宽基"
-    mapping = {
-        "金": {"固收": 2, "宽基": 1, "均衡": 1, "消费": 0, "科技": -1},
-        "木": {"科技": 2, "均衡": 1, "宽基": 0, "消费": 0, "固收": -1},
-        "水": {"固收": 1, "宽基": 1, "均衡": 1, "科技": 0, "消费": 0},
-        "火": {"科技": 2, "消费": 1, "宽基": 0, "均衡": 0, "固收": -2},
-        "土": {"均衡": 2, "宽基": 1, "消费": 1, "科技": 0, "固收": 0},
-    }
-    table = mapping.get(dominant, mapping["土"])
-    score = _clamp_score(float(table.get(track, 0)))
-    reason = (
-        f"画像赛道匹配：主导特征权重来自结构化五行向量{dominant}，"
-        f"与基金赛道「{track}」对齐得分{score}。"
-    )
-    return score, reason
 
 
 def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
     profile = state.get("user_profile") or {}
     fund = state.get("fund_data") or {}
-    liu = liunian_factor()
-    score_p, reason_p = _profiling_alignment_score(state)
-    cap = float((profile.get("liunian_2026") or {}).get("max_equity_weight_cap") or 0.68)
-    core_weight = round(min(0.45 + profile.get("risk_level", 3) * 0.04, 0.65, cap - 0.12) * liu, 3)
+    score_p, reason_p = _fbti_track_alignment_score(state)
+    risk = int(profile.get("risk_level") or 3)
+    cap = round(min(0.78, 0.52 + risk * 0.05), 3)
+    core_weight = round(min(0.45 + risk * 0.04, 0.65, cap - 0.1), 3)
     satellite = round(max(0.15, 1 - core_weight - 0.2), 3)
     cash = round(1 - core_weight - satellite, 3)
 
@@ -193,13 +257,13 @@ def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
             "name": fund.get("name"),
             "role": "core",
             "weight": core_weight,
-            "rationale": "核心仓：与画像风险等级相匹配的主基金/ETF。",
+            "rationale": "核心仓：与 FBTI 推断风险等级相匹配的主基金/ETF。",
         },
         {
             "code": "511010",
             "name": "国债ETF",
             "role": "stabilizer",
-            "weight": satellite if profile.get("risk_level", 3) <= 3 else satellite * 0.6,
+            "weight": satellite if risk <= 3 else satellite * 0.6,
             "rationale": "波动缓冲：用于降低组合波动（演示用固定标的，可替换为货基/短债）。",
         },
         {
@@ -214,7 +278,7 @@ def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
         "proposed_portfolio": portfolio,
         "agent_scores": {"profiling": score_p},
         "agent_reasons": {"profiling": reason_p},
-        "compliance_notes": ["资产配置 Agent 已生成结构化权重（非投资建议，仅课堂演示）。"],
+        "compliance_notes": ["资产配置：结构化权重草案（非投资建议，演示）。"],
     }
 
 
@@ -280,9 +344,10 @@ def node_voting(state: MAFBState) -> dict[str, Any]:
     )
 
     anchor = state.get("fund_data") or {}
-    top5 = build_top5_recommendations(user_profile, anchor)
+    kline_rows = list(state.get("kline_similar_funds") or [])
+    similarity_top5 = _build_similarity_top5(anchor, kline_rows)
     chain = build_reasoning_chain()
-    position = build_position_advice(user_profile)
+    position = build_position_advice_mafb(user_profile)
 
     final_report = {
         "verdict": "pass",
@@ -293,8 +358,9 @@ def node_voting(state: MAFBState) -> dict[str, Any]:
         "fund": anchor,
         "rag_chunks": state.get("rag_chunks"),
         "proposed_portfolio": state.get("proposed_portfolio"),
-        "top5_recommendations": top5,
-        "kline_similar_funds": state.get("kline_similar_funds") or [],
+        "similarity_top5": similarity_top5,
+        "kline_similar_funds": kline_rows,
+        "top5_recommendations": [],
         "reasoning_chain": chain,
         "position_advice": position,
         "reasons": state.get("agent_reasons"),
@@ -307,7 +373,7 @@ def node_voting(state: MAFBState) -> dict[str, Any]:
     }
 
     final_report["summary"] = (
-        f"多智能体加权总分 {weighted:.2f}；已输出个性化 TOP5 与完整推理链（教学演示）。"
+        f"多智能体加权总分 {weighted:.2f}；已输出 K 线/统计特征融合的相似基金 TOP5（演示）。"
     )
 
     return {"final_report": final_report, "weighted_total": round(weighted, 3), "agent_scores": {"allocation": alloc_score}}
@@ -322,6 +388,9 @@ def node_blocked(state: MAFBState) -> dict[str, Any]:
         "本输出仅供教学演示，不构成投资建议。基金有风险，投资需谨慎。"
     )
     user_profile = state.get("user_profile") or {}
+    anchor = state.get("fund_data") or {}
+    kline_rows = list(state.get("kline_similar_funds") or [])
+    similarity_top5 = _build_similarity_top5(anchor, kline_rows)
     report = {
         "verdict": "blocked",
         "weighted_total": sum((state.get("agent_scores") or {}).values()),
@@ -329,9 +398,10 @@ def node_blocked(state: MAFBState) -> dict[str, Any]:
         "reasons": state.get("agent_reasons"),
         "user_profile": user_profile,
         "top5_recommendations": [],
-        "kline_similar_funds": state.get("kline_similar_funds") or [],
+        "similarity_top5": similarity_top5,
+        "kline_similar_funds": kline_rows,
         "reasoning_chain": build_reasoning_chain(),
-        "position_advice": build_position_advice(user_profile) if user_profile else {},
+        "position_advice": build_position_advice_mafb(user_profile) if user_profile else {},
         "compliance": {
             "is_compliant": False,
             "blocked_reason": state.get("blocked_reason"),
@@ -346,7 +416,10 @@ def node_blocked(state: MAFBState) -> dict[str, Any]:
 
 def route_parallel_analysts(state: MAFBState):
     """LangGraph 原生并行：基本面 / 技术面 / 风控 / K线相似 四路 fan-out（Send）。"""
-    from langgraph.types import Send
+    try:
+        from langgraph.types import Send
+    except ModuleNotFoundError:
+        from langgraph.constants import Send
 
     return [
         Send("fundamental", state),

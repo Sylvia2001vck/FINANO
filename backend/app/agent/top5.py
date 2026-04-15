@@ -1,10 +1,39 @@
-"""个性化基金 TOP5：命理结构化理由 + 金融统计理由（演示池全量打分）。"""
+"""MAFB：推理链文案；娱乐化个性化 TOP5（五行/流年）供 AI 选股页使用。"""
 
 from __future__ import annotations
 
 from typing import Any
 
 from app.agent.fund_catalog import list_funds
+
+
+def build_reasoning_chain() -> list[str]:
+    return [
+        "① User Profiling（MAFB）：仅使用已保存的 FBTI 金融人格与账户风险偏好，合成 risk_level 与风格标签；不含八字五行流年演示。",
+        "② 基金主数据：按主基金代码拉取目录中的规模、夏普、回撤、60 日动量、风险等级等统计列（历史数据，非预测）。",
+        "③ RAG（FAISS）：用「代码 + 名称 + 赛道」检索事实片段；按用户 risk_level 对命中结果轻量重排。",
+        "④ 并行基本面 / 技术面 / 风控 / K 线相似（LangGraph Send）：四路写 agent_scores 与 agent_reasons。",
+        "④a 基本面：优先金融大模型 JSON；失败则规则分。",
+        "④b 技术面：优先 LLM；失败则动量规则分。",
+        "④c 风控：优先 LLM；失败则用户与基金风险等级偏差规则分。",
+        "④d K 线相似：对齐日收益率序列，输出与主基金形态最接近的候选（余弦/DTW）。",
+        "⑤ Asset Allocation：在 FBTI 推断的风险档下生成核心/卫星/现金草案；画像维度为 FBTI 与赛道一致性（非命理）。",
+        "⑥ Compliance：禁宣词、风险错配、综合分过低；可选合规大模型。",
+        "⑦ Voting：加权汇总；报告主表为「统计特征相似度 + K 线相似度」合并的相似基金 TOP5（演示）。",
+    ]
+
+
+def build_position_advice_mafb(user_profile: dict[str, Any]) -> dict[str, Any]:
+    """不含流年：仅用 FBTI 推断的 risk_level 给出权益上限演示。"""
+    risk = int(user_profile.get("risk_level") or 3)
+    cap = round(min(0.78, 0.52 + risk * 0.05), 3)
+    equity_suggest = round(min(cap - 0.08, 0.32 + risk * 0.06), 3)
+    return {
+        "risk_level": risk,
+        "suggested_max_equity_weight": equity_suggest,
+        "liunian_equity_cap": cap,
+        "note": "基于 FBTI 推断的风险档位与权益上限（演示，不构成投资建议）。",
+    }
 
 
 def _track_mingli_score(dominant: str, track: str) -> float:
@@ -18,18 +47,7 @@ def _track_mingli_score(dominant: str, track: str) -> float:
     return float(mapping.get(dominant, mapping["土"]).get(track, 0))
 
 
-def build_reasoning_chain() -> list[str]:
-    return [
-        "① User Profiling Agent：MBTI 风险偏好 + 五行向量 + 日主演示特征 + 喜忌规则 + 2026 丙午流年/风水倾斜 → 结构化 user_profile",
-        "② RAG：FAISS 检索基金事实片段，重排融合画像",
-        "③ 并行 Analysts：Fundamental / Technical / Risk（LangGraph Send）→ agent_scores",
-        "④ Asset Allocation：组合权重 + 流年仓位上限",
-        "⑤ Compliance：禁宣词 + 风险错配 + 可选大模型合规 JSON",
-        "⑥ Voting：加权投票 → 最终报告与 TOP5",
-    ]
-
-
-def build_top5_recommendations(user_profile: dict[str, Any], anchor_fund: dict[str, Any]) -> list[dict[str, Any]]:
+def build_top5_personalized_entertainment(user_profile: dict[str, Any], anchor_fund: dict[str, Any]) -> list[dict[str, Any]]:
     user_risk = int(user_profile.get("risk_level") or 3)
     dominant = user_profile.get("dominant_element") or "土"
     liu = user_profile.get("liunian_2026") or {}
@@ -83,6 +101,10 @@ def build_top5_recommendations(user_profile: dict[str, Any], anchor_fund: dict[s
         row["rank"] = i
         out.append(row)
     return out
+
+
+# 兼容旧名：AI 选股娱乐化融合层仍 import 此名
+build_top5_recommendations = build_top5_personalized_entertainment
 
 
 def build_position_advice(user_profile: dict[str, Any]) -> dict[str, Any]:

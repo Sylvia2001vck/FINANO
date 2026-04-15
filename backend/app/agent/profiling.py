@@ -108,14 +108,17 @@ def liunian_2026_bingwu() -> dict[str, Any]:
 
 
 def _sector_tilt_from_layout(facing: str | None) -> dict[str, float]:
-    facing = (facing or "N").upper()
+    """无环境偏好时不注入赛道倾斜（空表）。"""
+    if not facing or not str(facing).strip():
+        return {}
+    facing_u = facing.strip().upper()[:1]
     table = {
         "N": {"科技": 0.15, "消费": 0.1, "宽基": 0.05},
         "S": {"消费": 0.15, "固收": 0.1, "宽基": 0.05},
         "E": {"科技": 0.12, "均衡": 0.12, "宽基": 0.06},
         "W": {"固收": 0.18, "宽基": 0.1, "均衡": 0.04},
     }
-    return dict(table.get(facing, table["N"]))
+    return dict(table.get(facing_u, table["N"]))
 
 
 def build_user_profile(
@@ -150,7 +153,7 @@ def build_user_profile(
         "day_master": dm,
         "wuxing_xiji": xiji,
         "layout_sector_tilt": layout_tilt,
-        "fengshui_layout_facing": (layout_facing or "N").upper(),
+        "fengshui_layout_facing": (layout_facing or "").strip().upper()[:1] or None,
         "risk_level": risk_level,
         "liquidity_preference": "高" if mbti in {"ENTP", "ESTP", "ENTJ"} else "中",
         "liunian_2026": liu26,

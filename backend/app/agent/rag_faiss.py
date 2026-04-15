@@ -14,6 +14,14 @@ _DOCS: list[str] = []
 _META: list[dict[str, Any]] = []
 
 
+def reset_rag_index() -> None:
+    """基金池切换后丢弃 FAISS 缓存，下次检索会按新目录重建。"""
+    global _INDEX, _DOCS, _META
+    _INDEX = None
+    _DOCS = []
+    _META = []
+
+
 def _text_embedding(text: str, dim: int = 64) -> np.ndarray:
     rng = np.random.default_rng(int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:8], 16))
     vec = rng.standard_normal(dim, dtype=np.float32)

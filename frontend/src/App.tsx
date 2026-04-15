@@ -9,11 +9,11 @@ import CommunityPage from "./pages/Community";
 import DashboardPage from "./pages/Dashboard";
 import LoginPage from "./pages/Login";
 import NotePage from "./pages/Note";
-import OcrFundPage from "./pages/OcrFund";
-import SimilarFundsPage from "./pages/SimilarFunds";
 import TradePage from "./pages/Trade";
 import FbtiTestPage from "./pages/FbtiTest";
 import FbtiResultPage from "./pages/FbtiResult";
+import AiFundPickPage from "./pages/AiFundPick";
+import { postWarmFundCatalog } from "./services/agent";
 import { fetchMe } from "./services/user";
 import { useAppStore } from "./store/appStore";
 import { useUserStore } from "./store/userStore";
@@ -37,7 +37,10 @@ export default function App() {
   useEffect(() => {
     if (!token || currentUser) return;
     void fetchMe()
-      .then((user) => setAuth({ access_token: token, token_type: "bearer", user }))
+      .then((user) => {
+        setAuth({ access_token: token, token_type: "bearer", user });
+        void postWarmFundCatalog().catch(() => {});
+      })
       .catch(() => logout())
       .finally(() => setLoading(false));
   }, [token, currentUser, setAuth, logout]);
@@ -55,11 +58,12 @@ export default function App() {
         <Route path="/trade" element={<ProtectedLayout><TradePage /></ProtectedLayout>} />
         <Route path="/note" element={<ProtectedLayout><NotePage /></ProtectedLayout>} />
         <Route path="/ai" element={<ProtectedLayout><AIPage /></ProtectedLayout>} />
-        <Route path="/ocr-fund" element={<ProtectedLayout><OcrFundPage /></ProtectedLayout>} />
-        <Route path="/similar-funds" element={<ProtectedLayout><SimilarFundsPage /></ProtectedLayout>} />
+        <Route path="/similar-funds" element={<Navigate to="/mafb" replace />} />
         <Route path="/mafb" element={<ProtectedLayout><MAFBPage /></ProtectedLayout>} />
+        <Route path="/fbti" element={<Navigate to="/fbti-result" replace />} />
         <Route path="/fbti-test" element={<ProtectedLayout><FbtiTestPage /></ProtectedLayout>} />
         <Route path="/fbti-result" element={<ProtectedLayout><FbtiResultPage /></ProtectedLayout>} />
+        <Route path="/ai-fund-pick" element={<ProtectedLayout><AiFundPickPage /></ProtectedLayout>} />
         <Route path="/profile" element={<ProtectedLayout><ProfilePage /></ProtectedLayout>} />
         <Route path="/community" element={<ProtectedLayout><CommunityPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to={token ? "/" : "/login"} replace />} />

@@ -19,12 +19,15 @@ logger = logging.getLogger(__name__)
 
 _TIANTIAN_GZ_URL = "https://fundgz.1234567.com.cn/js/{code}.js"
 
-# 两次真实 HTTP 请求之间至少间隔（秒），降低对公开接口的请求频率
+# 两次真实 HTTP 请求之间至少间隔（秒），降低对公开接口的请求频率（估值接口）
 _MIN_HTTP_INTERVAL_SEC = 5.0
+# 历史净值 lsjz 批量扫描时使用更短间隔，避免 K 线相似度在候选较多时「永远算不完」
+_MIN_LSJZ_INTERVAL_SEC = 0.35
 # 同一基金代码估值缓存时间（秒），列表接口连续读盘时避免重复打网
 _CACHE_TTL_SEC = 60.0
 
 _last_http_mono: float = 0.0
+_last_lsjz_mono: float = 0.0
 _quote_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
@@ -45,6 +48,14 @@ def _throttle_http() -> None:
     gap = now - _last_http_mono
     if gap < _MIN_HTTP_INTERVAL_SEC:
         time.sleep(_MIN_HTTP_INTERVAL_SEC - gap)
+
+
+def _throttle_lsjz() -> None:
+    global _last_lsjz_mono
+    now = time.monotonic()
+    gap = now - _last_lsjz_mono
+    if gap < _MIN_LSJZ_INTERVAL_SEC:
+        time.sleep(_MIN_LSJZ_INTERVAL_SEC - gap)
 
 
 def _normalize_quote_payload(code: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -178,7 +189,7 @@ def fetch_fund_nav_history(fund_code: str, days: int = 90, timeout: float = 15.0
 
     params = {"type": "lsjz", "code": code, "page": 1, "per": per}
     try:
-        _throttle_http()
+        _throttle_lsjz()
         r = httpx.get(
             _LSJZ_URL,
             params=params,
@@ -194,8 +205,8 @@ def fetch_fund_nav_history(fund_code: str, days: int = 90, timeout: float = 15.0
         logger.debug("fund nav history request failed: %s", code, exc_info=True)
         return []
     finally:
-        global _last_http_mono
-        _last_http_mono = time.monotonic()
+        global _last_lsjz_mono
+        _last_lsjz_mono = time.monotonic()
 
     parsed = parse_lsjz_apidata_body(text)
     if len(parsed) > days:

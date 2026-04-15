@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.agent.fund_catalog import list_funds
+from app.core.config import settings
+from app.agent.fund_catalog import get_fund_by_code, list_funds_catalog_sample, list_funds_catalog_window, static_demo_pool_size
 from app.agent.fund_similarity import find_similar_kline_funds
 from app.services.similar_funds import similar_funds
-from app.agent.graph import invoke_mafb
+from app.agent.graph import get_mafb_state_after_stream, invoke_mafb, stream_mafb_stages
 from app.agent.profiling import build_user_profile
+from app.agent.top5 import build_top5_personalized_entertainment
 from app.core.exceptions import APIException
 from app.core.responses import success_response
 from app.core.security import get_current_user
@@ -18,8 +23,8 @@ from app.db.session import get_db
 from app.modules.agent.schemas import AgentProfileSave, MAFBRunRequest
 from app.modules.user.models import User
 from app.modules.user.service import update_investor_profile
-from app.services.birth_ocr import extract_birth_from_image
-from app.services.ai_fund_selector import build_fund_snapshot_for_fbti, select_funds_with_ai
+from app.services.ai_fund_selector import run_fbti_ai_selection
+from app.services.user_agent_fund_pool import add_to_pool, list_pool_funds, remove_from_pool
 from app.services.fbti_engine import match_archetype
 
 router = APIRouter(prefix="/agent", tags=["mafb"])
@@ -32,12 +37,13 @@ except Exception:
     _BJ = None
 
 
-def _initial_state(payload: MAFBRunRequest, risk_preference: int | None) -> dict:
+def _initial_state(payload: MAFBRunRequest, risk_preference: int | None, fbti_profile: str | None) -> dict:
+    eff_fbti = fbti_profile if payload.include_fbti else None
     return {
-        "user_birth": payload.user_birth,
-        "user_mbti": payload.user_mbti,
+        "include_fbti": payload.include_fbti,
+        "fbti_profile": eff_fbti,
         "fund_code": payload.fund_code.strip(),
-        "layout_facing": (payload.layout_facing or "").strip() or None,
+        "layout_facing": None,
         "risk_preference": risk_preference,
         "agent_scores": {},
         "agent_reasons": {},
@@ -50,62 +56,26 @@ def _initial_state(payload: MAFBRunRequest, risk_preference: int | None) -> dict
     }
 
 
-def _resolve_run_payload(payload: MAFBRunRequest, user: User) -> MAFBRunRequest:
-    if not payload.use_saved_profile:
-        return payload.model_copy(
-            update={
-                "user_birth": payload.user_birth or "1990-01-01",
-                "user_mbti": (payload.user_mbti or "INTJ").upper(),
-            }
-        )
-
-    birth = payload.user_birth
-    mbti = payload.user_mbti
-    layout = payload.layout_facing
-
-    if user.birth_date and not birth:
-        birth = user.birth_date.isoformat()
-    if user.mbti and not mbti:
-        mbti = user.mbti.upper()
-    if user.layout_facing and not layout:
-        layout = user.layout_facing
-
-    if not birth or not mbti:
-        raise APIException(
-            code=40001,
-            message="请先调用 POST /api/v1/agent/profile 保存生日与 MBTI，或关闭 use_saved_profile 并传参",
-            status_code=400,
-        )
-
-    return payload.model_copy(
-        update={
-            "user_birth": birth,
-            "user_mbti": mbti.upper(),
-            "layout_facing": layout,
-        }
-    )
-
-
 @router.post("/profile")
 def save_agent_profile(
     payload: AgentProfileSave,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """保存 MBTI、生日、风水朝向、风险偏好，并返回结构化画像（供报告「命理个性化层」）。"""
+    """保存 MBTI、生日、风险偏好，并返回结构化画像（供报告「命理个性化层」）。"""
     bd = date.fromisoformat(payload.user_birth)
     user = update_investor_profile(
         db,
         current_user.id,
         mbti=payload.user_mbti,
         birth_date=bd,
-        layout_facing=payload.layout_facing,
+        layout_facing="",
         risk_preference=payload.risk_preference,
     )
     structured = build_user_profile(
         payload.user_birth,
         payload.user_mbti.upper(),
-        (payload.layout_facing or user.layout_facing or "").strip() or None,
+        None,
         payload.risk_preference if payload.risk_preference is not None else user.risk_preference,
     )
     return success_response(
@@ -114,7 +84,6 @@ def save_agent_profile(
             "saved_fields": {
                 "mbti": user.mbti,
                 "birth_date": user.birth_date.isoformat() if user.birth_date else None,
-                "layout_facing": user.layout_facing,
                 "risk_preference": user.risk_preference,
             },
             "structured_profile": structured,
@@ -136,7 +105,7 @@ def get_agent_profile(current_user: User = Depends(get_current_user), db: Sessio
     structured = build_user_profile(
         user.birth_date.isoformat(),
         user.mbti,
-        user.layout_facing,
+        None,
         user.risk_preference,
     )
     return success_response(
@@ -144,13 +113,25 @@ def get_agent_profile(current_user: User = Depends(get_current_user), db: Sessio
             "saved_fields": {
                 "mbti": user.mbti,
                 "birth_date": user.birth_date.isoformat(),
-                "layout_facing": user.layout_facing,
                 "risk_preference": user.risk_preference,
             },
             "structured_profile": structured,
         },
         message="ok",
     )
+
+
+def _mafb_response_payload(result: dict) -> dict:
+    report = result.get("final_report") or {}
+    safe_snapshot = {
+        "weighted_total": result.get("weighted_total"),
+        "agent_scores": result.get("agent_scores"),
+        "agent_reasons": result.get("agent_reasons"),
+        "is_compliant": result.get("is_compliant"),
+        "blocked_reason": result.get("blocked_reason"),
+        "compliance_notes": result.get("compliance_notes") or [],
+    }
+    return {"final_report": report, "state_snapshot": safe_snapshot}
 
 
 @router.post("/run")
@@ -164,34 +145,202 @@ def run_mafb_pipeline(
     if not user:
         raise APIException(code=10001, status_code=404)
 
-    resolved = _resolve_run_payload(payload, user)
-    state = _initial_state(resolved, user.risk_preference)
+    state = _initial_state(payload, user.risk_preference, user.fbti_profile)
     result = invoke_mafb(state)
-    report = result.get("final_report") or {}
-    safe_snapshot = {
-        "weighted_total": result.get("weighted_total"),
-        "agent_scores": result.get("agent_scores"),
-        "is_compliant": result.get("is_compliant"),
-        "blocked_reason": result.get("blocked_reason"),
-    }
     return success_response(
-        data={"final_report": report, "state_snapshot": safe_snapshot},
+        data=_mafb_response_payload(result),
         message="MAFB 流水线执行完成",
     )
 
 
+@router.post("/run/stream")
+def run_mafb_pipeline_stream(
+    payload: MAFBRunRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """SSE：按节点推送阶段名，最后一条 event=result 与 POST /agent/run 结构一致。"""
+    user = db.get(User, current_user.id)
+    if not user:
+        raise APIException(code=10001, status_code=404)
+
+    initial = _initial_state(payload, user.risk_preference, user.fbti_profile)
+    thread_id = str(uuid.uuid4())
+
+    def event_gen():
+        try:
+            for ev in stream_mafb_stages(initial, thread_id):
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+            final = get_mafb_state_after_stream(thread_id) or invoke_mafb(initial)
+            out = _mafb_response_payload(final)
+            yield f"data: {json.dumps({'event': 'result', 'data': out}, ensure_ascii=False, default=str)}\n\n"
+        except Exception as e:  # noqa: BLE001 — 流式响应需把错误写入终端
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/funds/catalog-status")
+def fund_catalog_status(_user=Depends(get_current_user)):
+    """全市场模式：是否已缓存、是否正在拉取（含同步 GET /funds）、错误信息；静态模式始终 ready。"""
+    mode = (settings.fund_catalog_mode or "static").strip().lower()
+    if mode != "eastmoney_full":
+        return success_response(
+            data={
+                "catalog_mode": settings.fund_catalog_mode,
+                "cached": True,
+                "count": static_demo_pool_size(),
+                "busy": False,
+                "error": None,
+            },
+            message="ok",
+        )
+    from app.agent.eastmoney_fund_loader import get_catalog_status
+
+    st = get_catalog_status()
+    return success_response(
+        data={"catalog_mode": settings.fund_catalog_mode, **st},
+        message="ok",
+    )
+
+
+@router.post("/funds/warm-catalog")
+def warm_fund_catalog(_user=Depends(get_current_user)):
+    """在后台线程开始拉取天天基金全量索引（与首次访问目录共享单飞锁）；静态模式跳过。"""
+    mode = (settings.fund_catalog_mode or "static").strip().lower()
+    if mode != "eastmoney_full":
+        return success_response(data={"status": "skipped", "catalog_mode": settings.fund_catalog_mode}, message="当前为静态演示池")
+    from app.agent.eastmoney_fund_loader import start_warm_catalog_background
+
+    status = start_warm_catalog_background()
+    return success_response(
+        data={"status": status, "catalog_mode": settings.fund_catalog_mode},
+        message="ok",
+    )
+
+
+class MyPoolCodesBody(BaseModel):
+    codes: list[str]
+
+
 @router.get("/funds")
-def list_demo_funds(_user=Depends(get_current_user)):
-    return success_response(data=list_funds())
+def list_demo_funds(
+    view: str = Query(
+        "catalog",
+        description="catalog=顺序分页+搜索 | random=筛选后随机抽样 | my_pool=我的自选",
+    ),
+    limit: int = Query(200, ge=1, le=5000, description="catalog 为分页条数；random 为抽样条数"),
+    offset: int = Query(0, ge=0),
+    q: str | None = Query(None, description="按代码或名称子串筛选（catalog / random 均可用）"),
+    seed: int | None = Query(None, description="random 时随机种子，不传则用当前时间毫秒"),
+    track: str | None = Query(None, description="random：赛道子串筛选"),
+    fund_type: str | None = Query(None, description="random：类型字段子串筛选"),
+    etf_only: bool = Query(False, description="random：仅 ETF"),
+    risk_min: int | None = Query(None, ge=1, le=5),
+    risk_max: int | None = Query(None, ge=1, le=5),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    view_l = (view or "catalog").lower().strip()
+    if view_l == "my_pool":
+        items, total = list_pool_funds(db, current_user.id)
+        return success_response(
+            data={
+                "items": items,
+                "total": total,
+                "catalog_mode": settings.fund_catalog_mode,
+                "limit": total,
+                "offset": 0,
+                "view": "my_pool",
+                "sample_seed": None,
+                "filter_total": None,
+            },
+            message="ok",
+        )
+    if view_l == "random":
+        items, filt_total, seed_used = list_funds_catalog_sample(
+            limit=limit,
+            seed=seed,
+            query=q,
+            track_kw=track,
+            type_kw=fund_type,
+            etf_only=etf_only,
+            risk_min=risk_min,
+            risk_max=risk_max,
+        )
+        return success_response(
+            data={
+                "items": items,
+                "total": len(items),
+                "catalog_mode": settings.fund_catalog_mode,
+                "limit": limit,
+                "offset": 0,
+                "view": "random",
+                "sample_seed": seed_used,
+                "filter_total": filt_total,
+            },
+            message="ok",
+        )
+
+    items, total = list_funds_catalog_window(limit=limit, offset=offset, query=q)
+    return success_response(
+        data={
+            "items": items,
+            "total": total,
+            "catalog_mode": settings.fund_catalog_mode,
+            "limit": limit,
+            "offset": offset,
+            "view": "catalog",
+            "sample_seed": None,
+            "filter_total": None,
+        },
+        message="ok",
+    )
+
+
+@router.post("/funds/my-pool")
+def my_pool_add_codes(
+    body: MyPoolCodesBody,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """批量加入自选（6 位代码，自动去重；非法项忽略）。"""
+    n = add_to_pool(db, current_user.id, body.codes)
+    items, total = list_pool_funds(db, current_user.id)
+    return success_response(
+        data={"added": n, "items": items, "total": total},
+        message=f"已处理，新增 {n} 条",
+    )
+
+
+@router.delete("/funds/my-pool/{fund_code}")
+def my_pool_remove_code(
+    fund_code: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ok = remove_from_pool(db, current_user.id, fund_code)
+    if not ok:
+        raise APIException(code=40004, message="未找到该自选或代码无效", status_code=404)
+    items, total = list_pool_funds(db, current_user.id)
+    return success_response(data={"items": items, "total": total}, message="已移除")
 
 
 @router.get("/funds/similar")
 def list_similar_funds(
     code: str = Query(..., min_length=6, max_length=6, description="6 位基金/ETF 代码"),
-    top_k: int = Query(5, ge=1, le=10),
+    top_k: int = Query(10, ge=1, le=20),
     _user=Depends(get_current_user),
 ):
-    """基于演示池多维特征（Pandas 归一化 + 余弦相似度）找相似基金。"""
+    """基于当前基金目录多维特征（Pandas 归一化 + 余弦相似度）找相似基金。"""
     rows = similar_funds(code, top_k=top_k)
     return success_response(data={"reference_code": code.strip(), "similar": rows}, message="ok")
 
@@ -200,7 +349,7 @@ def list_similar_funds(
 def list_kline_similar_funds(
     code: str = Query(..., min_length=6, max_length=6, description="6 位基金/ETF 代码"),
     days: int = Query(60, ge=20, le=200),
-    top_k: int = Query(5, ge=1, le=10),
+    top_k: int = Query(10, ge=1, le=20),
     method: str = Query("cosine", description="cosine | dtw"),
     _user=Depends(get_current_user),
 ):
@@ -211,13 +360,6 @@ def list_kline_similar_funds(
         data={"reference_code": code.strip(), "days": days, "method": m, "similar": rows},
         message="ok",
     )
-
-
-@router.post("/ocr-birth")
-async def ocr_birth(file: UploadFile = File(...), _user=Depends(get_current_user)):
-    content = await file.read()
-    birth, hint = extract_birth_from_image(content)
-    return success_response(data={"user_birth": birth, "hint": hint}, message="OCR 处理完成")
 
 
 class FbtiSelectBody(BaseModel):
@@ -233,7 +375,8 @@ def fbti_ai_select_funds(
     db: Session = Depends(get_db),
 ):
     """
-    FBTI + 五行 + 基金池（含可选实时行情）→ 大模型 JSON 选股；无 Key 时规则兜底。
+    FBTI + 五行娱乐融合：偏好 JSON → 随机样本 → 规则 Top20 → 模型终筛至多 5 只；
+    另附「个性化 TOP5」（五行/流年/统计）仅供趣味展示，与 MAFB 专业流水线解耦。
     """
     user = db.get(User, current_user.id)
     if not user:
@@ -248,12 +391,24 @@ def fbti_ai_select_funds(
         time_label = now.strftime("%Y-%m-%d %H:%M 北京时间")
     else:
         time_label = datetime.now().strftime("%Y-%m-%d %H:%M 本地时间")
-    snap = build_fund_snapshot_for_fbti()
-    result = select_funds_with_ai(
-        fbti_code=str(arch.get("matched_code", arch["code"])),
-        fbti_name=str(arch["name"]),
-        wuxing=wx,
-        time_label=time_label,
-        fund_snapshot=snap,
+    result = dict(
+        run_fbti_ai_selection(
+            fbti_code=str(arch.get("matched_code", arch["code"])),
+            fbti_name=str(arch["name"]),
+            wuxing=wx,
+            time_label=time_label,
+            arch=arch,
+        )
     )
+    bd = user.birth_date.isoformat() if user.birth_date else "1990-01-01"
+    mt = (user.mbti or "INTJ").upper()
+    prof_ent = build_user_profile(bd, mt, None, user.risk_preference)
+    anchor_code = ""
+    funds = result.get("funds") or []
+    if funds:
+        anchor_code = str(funds[0].get("code") or "").strip()
+    anchor = get_fund_by_code(anchor_code) if anchor_code else get_fund_by_code("510300")
+    if not anchor:
+        anchor = {}
+    result["personalized_top5"] = build_top5_personalized_entertainment(prof_ent, anchor)
     return success_response(data=result, message="FBTI AI 选股完成")

@@ -1,9 +1,8 @@
-import { Button, Card, DatePicker, Progress, Radio, Space, Typography, message } from "antd";
-import dayjs, { Dayjs } from "dayjs";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Button, Progress, Radio, Space, Spin, Typography, message } from "antd";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
-import { postFbtiTest } from "../../services/fbti";
+import { getFbtiProfile, postFbtiTest } from "../../services/fbti";
 import { useFbtiStore } from "../../store/fbtiStore";
 import { useUserStore } from "../../store/userStore";
 
@@ -20,12 +19,29 @@ const QUESTIONS: { q: string; a: string; b: string }[] = [
 
 export default function FbtiTestPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const retake = searchParams.get("retake") === "1";
   const setAuth = useUserStore((s) => s.setAuth);
   const token = useUserStore((s) => s.token);
   const setFbti = useFbtiStore((s) => s.setLast);
+  const [checkingSaved, setCheckingSaved] = useState(!retake);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<(string | null)[]>(Array(8).fill(null));
-  const [birth, setBirth] = useState<Dayjs | null>(null);
+
+  useEffect(() => {
+    if (retake) {
+      setCheckingSaved(false);
+      return;
+    }
+    void getFbtiProfile()
+      .then((d) => {
+        if (d.fbti_profile) {
+          navigate("/fbti-result", { replace: true });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCheckingSaved(false));
+  }, [retake, navigate]);
 
   const pct = Math.round(((step + 1) / QUESTIONS.length) * 100);
 
@@ -48,10 +64,7 @@ export default function FbtiTestPage() {
     }
     const ans = answers as string[];
     try {
-      const data = await postFbtiTest(
-        ans,
-        birth ? birth.format("YYYY-MM-DD") : undefined
-      );
+      const data = await postFbtiTest(ans);
       setFbti(data.fbti_code, data.user_wuxing);
       if (token && data.user) {
         setAuth({ access_token: token, token_type: "bearer", user: data.user });
@@ -62,6 +75,10 @@ export default function FbtiTestPage() {
       message.error(e instanceof Error ? e.message : "提交失败");
     }
   };
+
+  if (checkingSaved) {
+    return <Spin tip="加载中…" />;
+  }
 
   return (
     <div className="page-stack">
@@ -85,22 +102,9 @@ export default function FbtiTestPage() {
             <Radio value="B">{QUESTIONS[step].b}</Radio>
           </Space>
         </Radio.Group>
-        {step === 0 && (
-          <Card size="small" style={{ marginTop: 16 }} title="可选：录入生日（用于时辰五行演示）">
-            <DatePicker
-              value={birth}
-              onChange={setBirth}
-              placeholder="选择生日"
-              style={{ width: 200 }}
-              disabledDate={(d) => d && d > dayjs().endOf("day")}
-            />
-          </Card>
-        )}
         <div style={{ marginTop: 24 }}>
           <Space>
-            {step > 0 && (
-              <Button onClick={() => setStep(step - 1)}>上一题</Button>
-            )}
+            {step > 0 ? <Button onClick={() => setStep(step - 1)}>上一题</Button> : null}
             <Button type="primary" onClick={onNext}>
               {step === QUESTIONS.length - 1 ? "提交" : "下一题"}
             </Button>

@@ -28,8 +28,8 @@ def _merge_kline_list(left: list[dict[str, Any]] | None, right: list[dict[str, A
 class MAFBState(TypedDict, total=False):
     """Shared graph state — all agents read/write the same object (no memory silos)."""
 
-    user_birth: str
-    user_mbti: str
+    include_fbti: bool
+    fbti_profile: str | None
     fund_code: str
     layout_facing: str
     risk_preference: int | None

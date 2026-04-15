@@ -40,7 +40,15 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.project_name, version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title=settings.project_name,
+    version="1.0.0",
+    lifespan=lifespan,
+    # 显式固定文档路径（避免个别环境/代理下默认路由未挂载的困惑）
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

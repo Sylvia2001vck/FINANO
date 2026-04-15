@@ -4,7 +4,10 @@ K 线 / 净值序列相似度：近 N 日日收益率对齐后，余弦相似度
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import random
+from datetime import date, timedelta
 from typing import Any, Literal
 
 import numpy as np
@@ -13,6 +16,9 @@ from app.agent.fund_catalog import list_funds_catalog_only
 from app.services.fund_data import fetch_fund_nav_history
 
 logger = logging.getLogger(__name__)
+
+# 全市场模式下不能对上万只逐只拉净值；分层抽样：同赛道优先 + 随机补满
+_MAX_KLINE_PEER_FUNDS = 520
 
 Method = Literal["cosine", "dtw"]
 
@@ -74,6 +80,66 @@ def calc_series_similarity(
     return similarity_cosine(a, b)
 
 
+def _synthetic_nav_history(code: str, days: int) -> list[dict[str, Any]]:
+    """
+    东方财富未返回足够净值时：用基金代码种子生成确定性日收益序列，使 K 线余弦在演示池/失败降级下仍可计算。
+    非真实行情，仅用于课堂演示对齐算法。
+    """
+    n_days = max(30, int(days))
+    seed = int(hashlib.sha256(f"kline-synth:{code}".encode()).hexdigest()[:12], 16)
+    rng = np.random.default_rng(seed % (2**32 - 1))
+    base = date.today()
+    rows: list[dict[str, Any]] = []
+    nav = 1.0
+    for i in range(n_days):
+        d = base - timedelta(days=n_days - 1 - i)
+        dr = float(rng.normal(0.0004, 0.011))
+        nav = float(nav * (1.0 + dr))
+        rows.append(
+            {
+                "date": d.isoformat(),
+                "nav": nav,
+                "daily_return": dr,
+                "daily_pct_display": f"{dr * 100:.2f}%",
+            }
+        )
+    return rows
+
+
+def _peer_pool(catalog: list[dict[str, Any]], target_code: str, track: str, max_n: int) -> list[dict[str, Any]]:
+    pool = [r for r in catalog if str(r.get("code")) != target_code]
+    if len(pool) <= max_n:
+        return pool
+    same = [r for r in pool if (r.get("track") or "") == track]
+    rnd = random.Random(int(hashlib.sha256(target_code.encode()).hexdigest()[:8], 16))
+    out: list[dict[str, Any]] = []
+    codes: set[str] = set()
+    half = max_n // 2
+    if len(same) >= 40:
+        rnd.shuffle(same)
+        for r in same:
+            c = str(r.get("code"))
+            if c in codes:
+                continue
+            out.append(r)
+            codes.add(c)
+            if len(out) >= half:
+                break
+    else:
+        for r in same:
+            c = str(r.get("code"))
+            if c not in codes:
+                out.append(r)
+                codes.add(c)
+    rest = [r for r in pool if str(r.get("code")) not in codes]
+    rnd.shuffle(rest)
+    for r in rest:
+        if len(out) >= max_n:
+            break
+        out.append(r)
+    return out[:max_n]
+
+
 def find_similar_kline_funds(
     target_code: str,
     top_n: int = 5,
@@ -81,23 +147,35 @@ def find_similar_kline_funds(
     method: Method = "cosine",
 ) -> list[dict[str, Any]]:
     """
-    在演示池内（除目标外）比较近 N 日对齐日收益率序列，返回相似度最高的 top_n。
+    在基金目录内（除目标外）比较近 N 日对齐日收益率序列，返回相似度最高的 top_n。
+    目录很大时只扫描部分候选（优先与目标同 track），避免上万次净值请求。
     任一步失败则跳过该基金；目标无历史则返回 []。
     """
     code = target_code.strip()
     tgt_hist = fetch_fund_nav_history(code, days=days)
     tgt_map = _returns_by_date(tgt_hist)
+    tgt_synth = False
     if len(tgt_map) < 10:
-        logger.debug("target kline too short: %s", code)
-        return []
+        tgt_hist = _synthetic_nav_history(code, max(days, 60))
+        tgt_map = _returns_by_date(tgt_hist)
+        tgt_synth = True
+        logger.info("kline target using synthetic series (short/missing live nav): %s", code)
+
+    catalog = list_funds_catalog_only()
+    target_meta = next((r for r in catalog if str(r["code"]) == code), None)
+    track = (target_meta or {}).get("track") or ""
+    pool = _peer_pool(catalog, code, track or "宽基", _MAX_KLINE_PEER_FUNDS)
 
     scored: list[tuple[float, str, dict[str, Any]]] = []
-    for row in list_funds_catalog_only():
+    for row in pool:
         oc = str(row["code"])
-        if oc == code:
-            continue
         oh = fetch_fund_nav_history(oc, days=days)
         omap = _returns_by_date(oh)
+        peer_synth = False
+        if len(omap) < 10:
+            oh = _synthetic_nav_history(oc, max(days, 60))
+            omap = _returns_by_date(oh)
+            peer_synth = True
         aligned = _align_returns(tgt_map, omap)
         if aligned is None:
             continue
@@ -107,6 +185,9 @@ def find_similar_kline_funds(
         except Exception:
             logger.debug("similarity calc failed: %s vs %s", code, oc, exc_info=True)
             continue
+        src_note = ""
+        if tgt_synth or peer_synth:
+            src_note = "（部分净值序列为演示合成，用于算法对齐演示）"
         scored.append(
             (
                 sim,
@@ -119,9 +200,10 @@ def find_similar_kline_funds(
                     "method": method,
                     "window_days": days,
                     "aligned_points": int(len(va)),
+                    "nav_series": "synthetic" if (tgt_synth or peer_synth) else "live",
                     "rationale": (
                         f"近 {days} 个交易日对齐日收益率序列的{('余弦' if method == 'cosine' else 'DTW')}相似度"
-                        f"（演示用，历史不代表未来）。"
+                        f"（演示用，历史不代表未来）{src_note}"
                     ),
                 },
             )

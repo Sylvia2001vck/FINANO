@@ -1,6 +1,7 @@
 import json
 
 from app.core.config import settings
+from app.core.dashscope_setup import apply_dashscope_settings
 
 try:
     import dashscope
@@ -45,7 +46,7 @@ def analyze_trade(trade_data: dict, stats: dict):
     if not settings.dashscope_api_key or dashscope is None:
         return _local_analysis(trade_data, stats)
 
-    dashscope.api_key = settings.dashscope_api_key
+    apply_dashscope_settings(dashscope)
     system_prompt = (
         "你是 Finano 专业交易复盘助手，只基于用户提供的交易数据做事实性分析，"
         "不预测市场，不给出投资建议。严格输出 JSON，字段为 strengths、problems、suggestions。"

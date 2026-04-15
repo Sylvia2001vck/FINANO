@@ -58,14 +58,7 @@ def submit_fbti_test(
         data={
             "fbti_code": arch.get("matched_code", arch["code"]),
             "fbti_profile": user.fbti_profile,
-            "archetype": {
-                "code": arch["code"],
-                "name": arch["name"],
-                "wuxing": arch["wuxing"],
-                "tags": arch.get("tags"),
-                "blurb": arch.get("blurb"),
-                "nearest_archetype": arch.get("nearest_archetype", False),
-            },
+            "archetype": arch,
             "bazi_wuxing_hint": bazi_el,
             "user_wuxing": user.user_wuxing,
             "user": UserRead.model_validate(user).model_dump(),

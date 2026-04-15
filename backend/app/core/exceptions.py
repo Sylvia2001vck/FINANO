@@ -1,7 +1,13 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 logger = logging.getLogger(__name__)
@@ -40,7 +46,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_exception(_: Request, exc: Exception):
+    async def handle_unexpected_exception(request: Request, exc: Exception):
+        # 勿吞掉 HTTP 层异常（404/422 等），否则会误变成 500 或丢失 /docs 等默认行为
+        if isinstance(exc, StarletteHTTPException):
+            return await http_exception_handler(request, exc)
+        if isinstance(exc, RequestValidationError):
+            return await request_validation_exception_handler(request, exc)
         logger.exception("Unhandled server error: %s", exc)
         return JSONResponse(
             status_code=500,

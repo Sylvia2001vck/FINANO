@@ -3,9 +3,14 @@ Finance LLM adapter — 双链路容灾：
 
 1. 主力：阿里云 DashScope 通义千问（模型名由 FINANCE_MODEL_NAME / QWEN_FINANCE_MODEL 配置）
    + 统一「金融专家」系统人设（通用强模型 + 专业 Prompt ≈ 金融垂直助手，无需单独 qwen-finance SKU）
-2. 降级：本地开源 Qwen-1.8B 系权重 CPU 推理（无需 API，见 local_qwen.py）
-3. 备选：LangChain Tongyi、DeepSeek、Ollama
+2. 降级：DeepSeek、Ollama（与 DashScope 不同密钥/通道）
+3. 再降级：本地开源 Qwen-1.8B 系 CPU 推理（见 local_qwen.py）
 4. 再失败：由 nodes 规则引擎兜底，演示不翻车
+
+说明：不再链接 LangChain Tongyi 作为 DashScope 后的回退——二者共用同一 API Key，
+无效密钥时会重复 401 且 tenacity 打出冗长堆栈。
+
+Qwen3 等多模态模型须走 **MultiModalConversation**（multimodal-generation）；纯文本模型仍用 **Generation**。
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.core.dashscope_setup import apply_dashscope_settings
 from app.agent.local_qwen import invoke_local_qwen_finance
 
 logger = logging.getLogger(__name__)
@@ -93,6 +99,58 @@ agent_name 使用英文标识：fundamental / technical / risk 之一。
 不要输出 JSON 以外的任何文字。"""
 
 
+def _dashscope_model_uses_multimodal_api(model: str) -> bool:
+    """与百炼文档一致：Qwen3 / VL / QVQ 等走 multimodal-generation，不能只用纯文本 Generation。"""
+    m = (model or "").strip().lower()
+    if not m:
+        return False
+    if "-vl" in m or m.startswith("qvq"):
+        return True
+    if "qwen3" in m:
+        return True
+    return False
+
+
+def _dashscope_messages_to_multimodal(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """MultiModalConversation：每条 content 为 [{\"text\": \"...\"}, ...]。"""
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        role = str(m.get("role") or "user")
+        raw = m.get("content", "")
+        if isinstance(raw, list):
+            out.append({"role": role, "content": raw})
+            continue
+        text = "" if raw is None else str(raw)
+        out.append({"role": role, "content": [{"text": text}]})
+    return out
+
+
+def _dashscope_extract_assistant_text(choice: Any) -> str:
+    """兼容 Generation 与 MultiModalConversation 的 choices[0].message.content。"""
+    msg = getattr(choice, "message", None)
+    if msg is None:
+        return ""
+    content = getattr(msg, "content", None)
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for p in content:
+            if isinstance(p, dict) and p.get("text") is not None:
+                parts.append(str(p["text"]))
+            elif isinstance(p, str):
+                parts.append(p)
+        return "".join(parts)
+    if isinstance(content, dict):
+        t = content.get("text")
+        if t is not None:
+            return str(t)
+        return json.dumps(content, ensure_ascii=False)
+    return str(content)
+
+
 def _invoke_dashscope(messages: list[dict[str, str]], model: str) -> str | None:
     if not settings.dashscope_api_key:
         return None
@@ -100,15 +158,30 @@ def _invoke_dashscope(messages: list[dict[str, str]], model: str) -> str | None:
         import dashscope
     except ImportError:
         return None
-    dashscope.api_key = settings.dashscope_api_key
+    apply_dashscope_settings(dashscope)
+    api_key = (settings.dashscope_api_key or "").strip()
     try:
-        response = dashscope.Generation.call(
-            model=model,
-            messages=messages,
-            result_format="message",
-            temperature=0.1,
-            max_tokens=512,
-        )
+        if _dashscope_model_uses_multimodal_api(model):
+            from dashscope import MultiModalConversation
+
+            mm_messages = _dashscope_messages_to_multimodal(messages)
+            response = MultiModalConversation.call(
+                api_key=api_key,
+                model=model,
+                messages=mm_messages,
+                result_format="message",
+                temperature=0.1,
+                max_tokens=512,
+            )
+        else:
+            response = dashscope.Generation.call(
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                result_format="message",
+                temperature=0.1,
+                max_tokens=512,
+            )
         code = getattr(response, "status_code", None)
         if code is not None and code != 200:
             logger.warning("DashScope error: %s", response)
@@ -117,39 +190,13 @@ def _invoke_dashscope(messages: list[dict[str, str]], model: str) -> str | None:
         if not choices:
             logger.warning("DashScope empty choices: %s", response)
             return None
-        content = choices[0].message.content
-        if isinstance(content, dict):
-            return json.dumps(content, ensure_ascii=False)
-        return str(content)
+        text = _dashscope_extract_assistant_text(choices[0])
+        if not (text or "").strip():
+            logger.warning("DashScope empty assistant text: %s", response)
+            return None
+        return text.strip()
     except Exception:
         logger.exception("DashScope 调用失败 — 将尝试本地 Qwen-1.8B 降级")
-        return None
-
-
-def _invoke_tongyi(prompt: str) -> str | None:
-    if not settings.dashscope_api_key:
-        return None
-    try:
-        from langchain_community.llms import Tongyi
-    except ImportError:
-        return None
-    try:
-        model = settings.dashscope_finance_model
-        try:
-            llm = Tongyi(
-                model=model,
-                dashscope_api_key=settings.dashscope_api_key,
-                temperature=0.1,
-            )
-        except TypeError:
-            llm = Tongyi(
-                model_name=model,
-                dashscope_api_key=settings.dashscope_api_key,
-                temperature=0.1,
-            )
-        return str(llm.invoke(prompt))
-    except Exception:
-        logger.exception("Tongyi invocation failed")
         return None
 
 
@@ -202,7 +249,7 @@ def _invoke_ollama(prompt: str) -> str | None:
 
 def _invoke_finance_llm(messages: list[dict[str, str]], prompt_fallback: str) -> str | None:
     """
-    主力 DashScope（模型名 dashscope_finance_model）+ 金融人设 → 本地 Qwen-1.8B → 其他 API → None。
+    DashScope（dashscope_finance_model）→ DeepSeek → Ollama → 本地 Qwen-1.8B；均失败则 None。
     """
     mode = (settings.mafb_llm_mode or "auto").lower().strip()
     messages_aug = _augment_messages_with_finance_persona(messages)
@@ -218,8 +265,6 @@ def _invoke_finance_llm(messages: list[dict[str, str]], prompt_fallback: str) ->
     raw: str | None = None
     if mode in ("auto", "cloud_only"):
         raw = _invoke_dashscope(messages_aug, model)
-    if raw is None and mode in ("auto", "cloud_only"):
-        raw = _invoke_tongyi(tongyi_prompt)
     if raw is None and mode in ("auto", "cloud_only"):
         raw = _invoke_deepseek(messages_aug)
     if raw is None and mode in ("auto", "cloud_only"):

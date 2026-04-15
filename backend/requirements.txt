@@ -1,3 +1,5 @@
+# 推荐 Python 3.10 / 3.11（WSL 与生产最省心）。
+# 不推荐 Python 3.13：当前 SQLAlchemy 等依赖链在 3.13 上可能出现兼容性错误（如 TypingOnly 相关 AssertionError）。
 fastapi==0.110.0
 uvicorn==0.29.0
 sqlalchemy==2.0.29

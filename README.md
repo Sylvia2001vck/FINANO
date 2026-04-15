@@ -32,12 +32,144 @@ Finano 是企业轻量标准的全栈金融演示项目：`React 18 + TypeScript
 
 **简历表述示例**：基于通义千问金融 API 与 LangGraph 状态编排实现多智能体协同；FAISS RAG + 强制 JSON 投票；**云端与本地 Qwen-1.8B 双链路容灾**；前置合规拦截与可解释推理链输出。
 
-## 项目结构
+## FBTI（Finance MBTI）— 逻辑与产品设计
+
+**FBTI**（**F**inance **MBTI**）是本项目内的**行为金融学演示画像**：8 道二选一问卷 → 生成 **四位类型码** → 映射到 **8 种高频投资人格归档**，可选填 **生日** 与 **五行趣味合成**。用于答辩与产品叙事，**不构成投资建议**（前后端文案均已声明）。
+
+### 计分规则（与代码一致）
+
+- **输入**：`answers` 长度 **8**，每项 **`A` 或 `B`**，顺序对应第 1–8 题（见 `frontend/src/pages/FbtiTest/index.tsx` 中 `QUESTIONS` 与 `backend/app/services/fbti_engine.py` 中 `score_fbti_code`）。
+- **四维编码**（每维由 **两题** 计票，A/B 多者胜，平局规则见源码）：
+  | 维度 | 字母 | 含义（题号在引擎内固定） |
+  |------|------|--------------------------|
+  | 1 | **R / S** | 偏稳健 vs 偏进取（风险风格） |
+  | 2 | **L / T** | 偏长线 vs 偏短线（持仓周期） |
+  | 3 | **D / F** | 偏数据 vs 偏直觉（决策方式） |
+  | 4 | **C / A** | 偏集中 vs 偏分散（仓位习惯） |
+- **输出**：四位字符串，例如 `RLDC`，与 MBTI 类似但语义为**金融行为**，非心理学 MBTI 官方量表。
+
+### 人格归档（8 种原型）
+
+- 定义在 `backend/app/services/fbti_engine.py` 的 `_ARCHETYPES`：每种含 **`code`、`name`、`wuxing`（五行标签）、`tags`、`blurb`**（如「守财金牛」「赛道猎手」等）。
+- **匹配**：若四位码与某一归档 **完全一致**，直接命中；否则按 **汉明距离** 取最近归档，并标记 **`nearest_archetype: true`**（`match_archetype`）。
+
+### 生日与五行（工程化趣味规则）
+
+- 提交测试时可带 **`birth_date`**：会写入用户 **`birth_date`**，并调用 `app/services/bazi_wuxing.py` 中 **`compute_today_wuxing_preference`**（公历生日 + 当前北京时间时辰的**规则表演示**，非专业命理）。
+- **`fuse_wuxing`**：将归档上的 **人格五行** 与 **生日推演出的五行字** 合成展示串，写入 **`user.user_wuxing`**（≤32 字），用于结果页 Tag 与后续 AI 选股提示。
+
+### 持久化字段（`User`）
+
+- **`fbti_profile`**：四位类型码（及兼容近邻时的展示逻辑由 `match_archetype` 返回）。
+- **`user_wuxing`**：五行展示串（人格五行 ± 生日融合）。
+
+### 后端接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/v1/user/fbti/test` | 提交 8 题答案；可选 `birth_date`；计算码、归档、更新用户；见 `modules/user/router_fbti.py` |
+| `GET` | `/api/v1/user/fbti/profile` | 读取当前用户的 FBTI 与五行、生日、归档信息 |
+| `POST` | `/api/v1/agent/ai/fbti-select` | 基于已保存的 `fbti_profile` + 基金池快照，调用 **`ai_fund_selector`**（大模型 JSON 选股；**无 Key 时规则兜底**），见 `modules/agent/router.py` |
+
+### 前端交互
+
+- **`/fbti-test`**：分步一题一屏，**进度条** + **Radio**；可选 **DatePicker** 生日；提交后 **`postFbtiTest`**，成功则 **`navigate('/fbti-result')`**，并刷新 `userStore`。
+- **`/fbti-result`**：拉取 **`getFbtiProfile`**，展示人格名、五行 **Tag**（按首字着色）、生日；可点击 **「AI 组合建议」** 调用 **`postFbtiAiSelect`**（`/agent/ai/fbti-select`）。
+- **侧栏**：`AppLayout` 中提供「FBTI 测试」「FBTI 结果」入口。
+- **状态**：`store/fbtiStore.ts` 可缓存最近一次测试码与五行（便于跨页展示）。
+
+### 测试与模块位置
+
+- **单元测试**：`backend/tests/test_fbti_engine.py`（四位码与引擎一致性）。
+- **核心文件**：`services/fbti_engine.py`、`services/bazi_wuxing.py`、`modules/user/router_fbti.py`、`services/ai_fund_selector.py`（与 `agent` 路由中的 FBTI 选股衔接）。
+
+## 项目架构
+
+### 总体视图
+
+```mermaid
+flowchart TB
+  subgraph client["浏览器"]
+    SPA["React SPA\nVite + Ant Design"]
+  end
+  subgraph dev["本地开发"]
+    Vite["Vite :5173\n/api → proxy → backend"]
+  end
+  subgraph prod["Docker 生产"]
+    Nginx["Nginx\n静态资源 + /api 反代"]
+  end
+  subgraph api["FastAPI :8000"]
+    R["modules/* 路由\n前缀 /api/v1"]
+    SV["services/\n基金/OCR/FBTI 等横切能力"]
+    AG["agent/\nLangGraph + FAISS + LLM"]
+    DB[("SQLite 或 MySQL")]
+  end
+  SPA --> Vite
+  SPA --> Nginx
+  Vite --> R
+  Nginx --> R
+  R --> SV
+  R --> AG
+  SV --> DB
+  AG --> DB
+```
+
+- **API 前缀**：`/api/v1`（`app/core/config.py` 中 `api_v1_prefix`）。
+- **本地**：Axios 默认请求 `/api/v1`（`frontend/src/services/api.ts`）；Vite 将 **`/api` 代理到 `http://localhost:8000`**（`frontend/vite.config.ts`）。
+- **Docker**：`frontend/nginx.conf` 将 **`/api` 转发到 `backend:8000`**，与静态页同源，减少生产环境 CORS 配置负担。
+
+### 后端分层（`backend/app/`）
+
+| 层级 | 路径 | 职责 |
+|------|------|------|
+| 入口 | `main.py` | `lifespan`：`create_all`、热点种子、`drop_legacy_comments_table`；**CORS**；**全局异常**；挂载各 `modules` 路由 |
+| 核心 | `core/` | `config`（Pydantic Settings / `.env`）、`security`（JWT、密码哈希）、统一响应与异常 |
+| 数据 | `db/` | SQLAlchemy **Engine / SessionLocal**、`Base`、启动时遗留表清理 |
+| 业务模块 | `modules/*/` | 按领域：**router**（HTTP）、**schemas**（Pydantic）、**service**、**models**（SQLAlchemy，按需） |
+| 横切服务 | `services/` | `fund_data`、`ocr`、`qwen_finance`、`similar_funds`、`fbti_engine`、`birth_ocr` 等，供路由与 agent 复用 |
+| MAFB | `agent/` | **LangGraph**（`graph`、`nodes`、`state`）、**FAISS RAG**、`llm_client`、本地 Qwen 兜底、`profiling`、基金目录与相似度等 |
+
+`main.py` 挂载顺序体现域划分：**auth + user**、**`router_fbti`（`/user/fbti/*`）**、`trade`、`note`、`ai`、**`agent`（MAFB，含 `/agent/ai/fbti-select`）**、`ocr`、`hot`、`community`。
+
+### 前端分层（`frontend/src/`）
+
+| 层级 | 路径 | 职责 |
+|------|------|------|
+| 入口 | `main.tsx` / `App.tsx` | **React Router**；`/login` 与受保护布局（JWT + `fetchMe` 恢复会话） |
+| 页面 | `pages/*` | 仪表盘、交易、笔记、AI、MAFB、画像、OCR 识码、相似基金、FBTI、社区等 |
+| 布局与组件 | `components/` | `Layout/AppLayout`（侧栏与导航）、`Chart`、`UI/PageCard` |
+| 请求 | `services/` | `api.ts` 统一 Axios（baseURL、拦截、Loading）；按域拆分 `user`、`trade`、`agent`、`fbti` 等 |
+| 状态 | `store/` | **Zustand**：`userStore`、`appStore`（全局请求计数/Loading）、`fbtiStore` |
+
+### 部署拓扑（Docker Compose）
+
+- **`mysql`**：持久化卷；后端通过 **`DATABASE_URL`**（如 `mysql+pymysql://...@mysql:3306/...`）连接。
+- **`backend`**：读根目录 **`.env`**（`env_file` + `environment` 注入）。
+- **`frontend`**：Nginx 提供构建后的 SPA，并将 **`/api`** 转到后端服务名 **`backend:8000`**。
+
+### 仓库目录（节选）
 
 ```text
 finano/
-├── frontend/          # React 前端
-├── backend/           # FastAPI 后端
+├── frontend/
+│   ├── src/
+│   │   ├── pages/           # 路由页面
+│   │   ├── components/      # 布局、图表、通用 UI
+│   │   ├── services/        # Axios 与各域 API
+│   │   ├── store/           # Zustand
+│   │   └── App.tsx
+│   ├── vite.config.ts       # 开发代理 /api
+│   └── nginx.conf           # 生产镜像内 /api → backend
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── modules/         # user, trade, note, ai, agent, ocr, hot, community
+│   │   ├── agent/           # MAFB（LangGraph 等）
+│   │   └── services/        # 横切业务能力
+│   ├── tests/
+│   └── requirements.txt
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -50,6 +182,7 @@ finano/
 - 交割单 OCR 导入
 - AI 交易分析
 - **MAFB 多智能体基金管线（LangGraph + FAISS RAG + 合规网关）**
+- **FBTI 金融人格测评（四维编码、8 原型归档、五行融合、AI 选股兜底）**
 - 复盘笔记
 - 热点新闻演示数据
 - 社区发帖与点赞
@@ -57,9 +190,9 @@ finano/
 
 ### MAFB（Multi-Agent Fund Brain）双轨说明
 
-- **工程轨**：登录、交易、笔记、热点、社区、OCR 识码、相似基金、Docker。
+- **工程轨**：登录、交易、笔记、热点、社区、OCR 识码、相似基金、**FBTI 测试/结果**、Docker。
 - **智能体轨**：`backend/app/agent/` — 画像、基本面、技术面、风控、合规、配置与投票；**FAISS** RAG；**LangGraph** 状态共享。
-- **前端路由**：`/mafb` 多智能体控制台、`/profile` 用户档案、`/ocr-fund` 基金代码识图、`/similar-funds` 相似对比、`/community` 社区。
+- **前端路由**：`/mafb` 多智能体控制台、`/profile` 用户档案、`/fbti-test` 与 **`/fbti-result`**（FBTI）、`/ocr-fund` 基金代码识图、`/similar-funds` 相似对比、`/community` 社区。
 
 ## 工程说明
 
@@ -69,12 +202,20 @@ finano/
 
 ## 本地启动
 
-### 1. 后端
+### Python 版本（必读）
 
-```bash
+| 版本 | 说明 |
+|------|------|
+| **3.10 / 3.11** | **推荐**，与本项目依赖（FastAPI、**SQLAlchemy 2.0**、LangChain 等）在 WSL / Linux 上最省心。仓库内 `backend/.python-version` 写为 `3.10`，供 **pyenv** 自动切换。 |
+| **3.12** | 一般可用；需满足 `requirements.txt` 中 **pydantic>=2.7.4**（与 LangChain 解析一致）。 |
+| **3.13** | **不推荐**。当前栈在 3.13 上易出现 **SQLAlchemy** 等库的兼容性错误（例如与 typing 相关的 `AssertionError: ... TypingOnly`）。若系统默认已是 3.13，请改用 **3.10/3.11** 单独建 venv（见下方 WSL）。 |
+
+### 1. 后端（Windows）
+
+```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 # 国内网络若超时，可使用清华镜像：
 # pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
@@ -82,6 +223,30 @@ pip install -r requirements.txt
 # pip install -r requirements-optional-easyocr.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 uvicorn app.main:app --reload
 ```
+
+### 1b. 后端（WSL / Linux）
+
+虚拟环境目录名是 **`.venv`**（带点），激活路径为 **`.venv/bin/activate`**，**不要**写成 `venv`（无点会找不到）。
+
+若曾用 **Python 3.13** 建过环境并出现 SQLAlchemy 等报错，按下面**重建**即可（需已安装 `python3.10`，Ubuntu 可用 [deadsnakes](https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa) 或 `sudo apt install python3.10-venv`）：
+
+```bash
+conda deactivate    # 若在用 conda，先退出，避免与 venv 混用
+deactivate          # 若已在某个 venv 里，先退出
+
+cd /path/to/FINANO/backend
+rm -rf .venv
+
+python3.10 -m venv .venv
+source .venv/bin/activate
+
+pip install --upgrade pip
+pip install -r requirements.txt
+
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+成功时终端会出现 `Uvicorn running on http://0.0.0.0:8000`，浏览器打开 **`http://localhost:8000/docs`**。
 
 ### MAFB 金融大模型（云端主力 + 本地容灾）
 

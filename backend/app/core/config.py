@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     qwen_finance_model: str = Field(default="qwen-plus", alias="QWEN_FINANCE_MODEL")
     # MAFB 推理模式：auto=先云端后本地；cloud_only；local_only（无网演示）
     mafb_llm_mode: str = "auto"
+    # 并行打分智能体（基本面/技术面/风控）单次 LLM 总等待上限（秒），超时走规则引擎，避免卡死
+    mafb_agent_llm_timeout_sec: float = Field(default=16.0, alias="MAFB_AGENT_LLM_TIMEOUT_SEC", ge=4, le=120)
+    # K 线相似：对候选基金拉历史净值的最大次数（再大主要被 lsjz 节流拖慢）
+    mafb_kline_similar_max_nav_fetches: int = Field(default=64, alias="MAFB_KLINE_SIMILAR_MAX_NAV_FETCHES", ge=16, le=400)
     deepseek_api_key: str = ""
     deepseek_api_base: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-chat"

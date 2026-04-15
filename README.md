@@ -1,5 +1,17 @@
 # Finano
 
+## 版权与许可
+
+- **Copyright © 2026 Tianyi Pu（浦天祎）。** All rights reserved.
+- **开源许可：** 以仓库根目录 **`LICENSE`** 文件为准；若尚未添加该文件，请自行选用并上传许可证（如 MIT、Apache-2.0）。
+- **第三方：** 本仓库依赖各开源库及其许可证（见 `package.json`、`requirements*.txt` 等）；**行情与模型 API** 受对应服务商条款约束，使用者须自行合规使用。
+- **商标：** **「FINANO」** 及相关图形标识由 **Tianyi Pu（浦天祎）** 保留；未经许可，第三方不得以商业方式使用易造成混淆的近似标识。
+- **免责声明：** 本项目（含 MAFB、FBTI、AI 选股等）仅供 **学习、演示与工程验证**，**不构成投资建议**；因使用本软件产生的任何直接或间接损失，**作者与贡献者不承担法律责任**。
+
+**联系：** [tpuac@connect.ust.hk](mailto:tpuac@connect.ust.hk) · [3036238022@qq.com](mailto:3036238022@qq.com)
+
+---
+
 Finano 是企业轻量标准的全栈金融演示项目：`React 18 + TypeScript + Vite` 前端（Axios 统一拦截、全局 Loading、401 跳转登录、Zustand 用户态），`FastAPI + SQLAlchemy 2.0 + JWT` 后端；开发/演示默认 **SQLite**，生产可选 **MySQL**（Docker Compose），**不使用 Alembic**（小项目 `create_all` 即可）。
 
 ## 企业技术选型（刻意不用的组件）

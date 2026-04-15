@@ -15,6 +15,7 @@ Qwen3 等多模态模型须走 **MultiModalConversation**（multimodal-generatio
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import logging
 import re
@@ -217,7 +218,7 @@ def _invoke_deepseek(messages: list[dict[str, str]]) -> str | None:
                 "temperature": 0.1,
                 "max_tokens": 512,
             },
-            timeout=120.0,
+            timeout=min(28.0, max(8.0, float(settings.mafb_agent_llm_timeout_sec))),
         )
         r.raise_for_status()
         data = r.json()
@@ -238,7 +239,7 @@ def _invoke_ollama(prompt: str) -> str | None:
         r = httpx.post(
             f"{settings.ollama_base_url.rstrip('/')}/api/generate",
             json={"model": settings.ollama_model, "prompt": prompt, "stream": False},
-            timeout=120.0,
+            timeout=min(28.0, max(8.0, float(settings.mafb_agent_llm_timeout_sec))),
         )
         r.raise_for_status()
         return str(r.json().get("response") or "")
@@ -285,10 +286,14 @@ def invoke_finance_agent_score(
     fund: dict[str, Any],
     rag_chunks: list[str],
     user_risk: int,
+    *,
+    llm_deadline_sec: float | None = None,
 ) -> AgentScore | None:
     """
     返回结构化打分；若所有通道不可用或解析失败则返回 None，由调用方走规则引擎。
     agent_key: fundamental | technical | risk
+
+    llm_deadline_sec：单次 LLM 链路上限（秒）；None 时用 settings.mafb_agent_llm_timeout_sec；≤0 表示不限制。
     """
     prompt = _build_score_prompt(agent_role_zh, fund, rag_chunks, user_risk)
     messages = [
@@ -299,7 +304,21 @@ def invoke_finance_agent_score(
         {"role": "user", "content": prompt},
     ]
 
-    raw = _invoke_finance_llm(messages, prompt)
+    deadline = settings.mafb_agent_llm_timeout_sec if llm_deadline_sec is None else llm_deadline_sec
+    if deadline and deadline > 0:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            fut = ex.submit(_invoke_finance_llm, messages, prompt)
+            try:
+                raw = fut.result(timeout=float(deadline))
+            except concurrent.futures.TimeoutError:
+                logger.warning("Finance LLM 打分超时（%ss，agent=%s），将走规则引擎", deadline, agent_key)
+                raw = None
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
+    else:
+        raw = _invoke_finance_llm(messages, prompt)
+
     if raw is None:
         return None
 

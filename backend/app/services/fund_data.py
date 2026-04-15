@@ -21,8 +21,8 @@ _TIANTIAN_GZ_URL = "https://fundgz.1234567.com.cn/js/{code}.js"
 
 # 两次真实 HTTP 请求之间至少间隔（秒），降低对公开接口的请求频率（估值接口）
 _MIN_HTTP_INTERVAL_SEC = 5.0
-# 历史净值 lsjz 批量扫描时使用更短间隔，避免 K 线相似度在候选较多时「永远算不完」
-_MIN_LSJZ_INTERVAL_SEC = 0.35
+# 历史净值 lsjz 批量扫描时使用更短间隔；候选数已由统计相似预筛控制，略降间隔以缩短 TOP10 等待
+_MIN_LSJZ_INTERVAL_SEC = 0.22
 # 同一基金代码估值缓存时间（秒），列表接口连续读盘时避免重复打网
 _CACHE_TTL_SEC = 60.0
 

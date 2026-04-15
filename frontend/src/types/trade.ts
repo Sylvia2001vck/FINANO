@@ -1,0 +1,65 @@
+export type TradeDirection = "buy" | "sell";
+
+export interface Trade {
+  id: number;
+  user_id: number;
+  trade_date: string;
+  symbol: string;
+  name: string;
+  direction: TradeDirection;
+  quantity: number;
+  price: number;
+  amount: number;
+  fee: number;
+  profit: number;
+  platform: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TradeStats {
+  total_trades: number;
+  win_rate: number;
+  profit_factor: number;
+  max_drawdown: number;
+  total_profit: number;
+  avg_profit: number;
+}
+
+export interface NoteItem {
+  id: number;
+  user_id: number;
+  trade_id?: number | null;
+  title: string;
+  content: string;
+  tags?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HotNewsItem {
+  id: number;
+  title: string;
+  summary: string;
+  source: string;
+  publish_time: string;
+  created_at: string;
+}
+
+export interface PostItem {
+  id: number;
+  user_id: number;
+  title: string;
+  content: string;
+  likes: number;
+  comments: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiAnalysisResult {
+  strengths: string[];
+  problems: string[];
+  suggestions: string[];
+}

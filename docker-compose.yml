@@ -29,8 +29,9 @@ services:
 
   frontend:
     build: ./frontend
+    # 主机 80 常被系统 Nginx/其它站占用；8080 若给其它项目，FINANO 用 8081 → 访问 http://IP:8081/
     ports:
-      - "80:80"
+      - "8081:80"
     depends_on:
       - backend
 

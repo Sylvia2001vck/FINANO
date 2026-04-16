@@ -666,8 +666,8 @@ export default function MAFBPage() {
             <Descriptions bordered size="small" column={1}>
               {Object.entries(scoreBreakdown).map(([k, row]) => (
                 <Descriptions.Item key={k} label={k}>
-                  分 {(row as { score?: unknown }).score ?? "—"}，权重{" "}
-                  {(row as { weight?: unknown }).weight ?? "—"}
+                  分 {String((row as { score?: unknown }).score ?? "—")}，权重{" "}
+                  {String((row as { weight?: unknown }).weight ?? "—")}
                 </Descriptions.Item>
               ))}
             </Descriptions>

@@ -38,7 +38,7 @@ api.interceptors.response.use(
   },
   (error) => {
     const cfg = error?.config as InternalAxiosRequestConfig | undefined;
-    if (!skipGlobalLoading(cfg ?? {})) {
+    if (!cfg || !skipGlobalLoading(cfg)) {
       useAppStore.getState().decLoading();
     }
     const status = error?.response?.status;

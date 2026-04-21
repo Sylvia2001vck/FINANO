@@ -33,6 +33,8 @@ class MAFBState(TypedDict, total=False):
     fund_code: str
     layout_facing: str
     risk_preference: int | None
+    status: str
+    task_id: str
 
     user_profile: dict[str, Any]
     risk_level: int

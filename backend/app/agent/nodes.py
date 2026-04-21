@@ -12,15 +12,17 @@ from app.agent.top5 import (
     build_position_advice_mafb,
     build_reasoning_chain,
 )
+from app.services.fund_data import fetch_fund_nav_history
 from app.services.similar_funds import similar_funds
 
 _FORBIDDEN = ("保证收益", "稳赚", "无风险", "内幕", "必涨", "只赚不赔")
 _WEIGHTS = {
-    "fundamental": 0.25,
-    "technical": 0.25,
+    "fundamental": 0.22,
+    "technical": 0.22,
     "risk": 0.20,
-    "profiling": 0.15,
-    "allocation": 0.15,
+    "kline": 0.18,
+    "profiling": 0.12,
+    "allocation": 0.06,
 }
 
 
@@ -53,9 +55,12 @@ def _fbti_track_alignment_score(state: MAFBState) -> tuple[int, str]:
         if score == 0 and tags:
             if any(str(t) in track for t in tags if len(str(t)) >= 2):
                 score = 1
+    level = "高匹配" if score >= 2 else ("中性匹配" if score >= 0 else "低匹配")
     reason = (
-        f"FBTI「{name_fb}」画像中的类型/赛道偏好摘要与标的赛道「{track}」的一致性粗评（演示规则）。"
-        f"偏好摘要：{pref[:160] or '—'}。"
+        f"【核心结论】{level}；"
+        f"【画像对撞数据】用户画像={name_fb}，偏好摘要={pref[:80] or '—'}，标的赛道={track}；"
+        f"【逻辑推演】画像偏好与标的风格的一致性用于评估持有体验，错配时更易在波动中非理性赎回；"
+        f"【适配打分】{score}"
     )
     return _clamp_score(score), reason
 
@@ -104,6 +109,78 @@ def _build_similarity_top5(anchor: dict[str, Any], kline_rows: list[dict[str, An
     ]
 
 
+def _paa_segments_from_nav(nav_rows: list[dict[str, Any]], bins: int = 8) -> list[str]:
+    nav_vals = [float(r.get("nav") or 0.0) for r in nav_rows if r.get("nav") is not None]
+    if len(nav_vals) < 8:
+        return []
+    n = len(nav_vals)
+    lo = min(nav_vals)
+    hi = max(nav_vals)
+    span = (hi - lo) or 1.0
+    out: list[str] = []
+    for i in range(bins):
+        l = int(i * n / bins)
+        r = int((i + 1) * n / bins)
+        if r <= l:
+            continue
+        seg = nav_vals[l:r]
+        if len(seg) < 2:
+            continue
+        s0 = seg[0]
+        s1 = seg[-1]
+        p0 = int(round(((s0 - lo) / span) * 9 + 1))
+        p1 = int(round(((s1 - lo) / span) * 9 + 1))
+        slope = s1 - s0
+        if slope > 0.003:
+            desc = "稳步爬升"
+        elif slope < -0.003:
+            desc = "加速下探" if abs(slope) > 0.012 else "震荡下行"
+        else:
+            desc = "高位横盘" if p0 >= 7 else ("低位盘整" if p0 <= 4 else "中位震荡")
+        out.append(f"S{i + 1}: {p0}->{p1}, {desc}")
+    return out
+
+
+def _kline_feature_tags(nav_rows: list[dict[str, Any]]) -> dict[str, str]:
+    nav_vals = [float(r.get("nav") or 0.0) for r in nav_rows if r.get("nav") is not None]
+    if len(nav_vals) < 20:
+        return {}
+    last = nav_vals[-1]
+    ma5 = sum(nav_vals[-5:]) / 5
+    ma20 = sum(nav_vals[-20:]) / 20
+    bias20 = (last / ma20 - 1.0) if ma20 else 0.0
+    mom20 = (last / nav_vals[-20] - 1.0) if nav_vals[-20] else 0.0
+    trend = "Bearish" if (last < ma5 < ma20) else ("Bullish" if (last > ma5 > ma20) else "Neutral")
+    pattern = "Breakdown" if bias20 < -0.04 else ("Breakout" if bias20 > 0.04 else "Range")
+    support = f"{min(nav_vals[-20:]):.4f}"
+    return {
+        "Trend": trend,
+        "Bias20": f"{bias20:.2%}",
+        "Momentum20": f"{mom20:.2%}",
+        "Pattern": pattern,
+        "Support_Level": support,
+    }
+
+
+def _build_kline_symbolic_chunks(code: str, rows: list[dict[str, Any]], days: int = 80) -> list[str]:
+    nav_rows = fetch_fund_nav_history(code, days=days, timeout=8.0)
+    segs = _paa_segments_from_nav(nav_rows, bins=8)
+    tags = _kline_feature_tags(nav_rows)
+    top = rows[0] if rows else {}
+    dtw_sim = float(top.get("similarity") or 0.0)
+    case_name = str(top.get("name") or top.get("code") or "N/A")
+    chunks: list[str] = []
+    if segs:
+        chunks.append("K-Line Segments: " + "; ".join(f"[{s}]" for s in segs))
+    if tags:
+        chunks.append("Detected Patterns: " + str(tags).replace("'", '"'))
+    chunks.append(
+        f'Current DTW Match: {dtw_sim:.2f} similarity to "{case_name}". '
+        "Historical outcome reference: short-term inertia may persist."
+    )
+    return chunks
+
+
 def node_user_profiling(state: MAFBState) -> dict[str, Any]:
     include = bool(state.get("include_fbti", True))
     profile = build_user_profile_mafb(
@@ -146,9 +223,12 @@ def _fundamental_rule(state: MAFBState) -> dict[str, Any]:
     dd = float(fund.get("max_drawdown_3y") or 0.3)
     aum = float(fund.get("aum_billion") or 1)
     score = _clamp_score(sharpe * 3 - dd * 4 + min(aum / 400, 1))
+    level = "基本面稳健" if score >= 1 else ("基本面中性" if score >= 0 else "基本面偏弱")
     reason = (
-        f"基金基本面：规模约{aum:.0f}亿，近三年夏普约{sharpe:.2f}，最大回撤约{dd:.0%}。"
-        " 以上为历史统计特征，不代表未来表现。"
+        f"【核心结论】{level}；"
+        f"【硬事实数据】3年夏普={sharpe:.2f}，最大回撤={dd:.1%}，规模={aum:.2f}亿；"
+        "【逻辑推演】风险收益效率与回撤控制共同决定资产质量，历史统计不代表未来表现；"
+        f"【基本面打分】{score}"
     )
     return {"agent_scores": {"fundamental": score}, "agent_reasons": {"fundamental": reason}}
 
@@ -157,17 +237,29 @@ def _technical_rule(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
     mom = float(fund.get("momentum_60d") or 0)
     score = _clamp_score(mom * 12)
-    reason = f"技术面/动量：近60日收益约{mom:.2%}，用于趋势与动量维度打分（非预测）。"
+    level = "趋势改善" if score >= 1 else ("趋势震荡" if score >= 0 else "趋势偏弱")
+    reason = (
+        f"【核心结论】{level}；"
+        f"【硬事实数据】60日动量={mom:.2%}；"
+        "【逻辑推演】动量刻画趋势惯性，当前信号仅反映历史路径特征，不构成收益承诺；"
+        f"【技术面打分】{score}"
+    )
     return {"agent_scores": {"technical": score}, "agent_reasons": {"technical": reason}}
 
 
 def _risk_rule(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
-    user_risk = int(state.get("risk_level") or 3)
     fund_risk = int(fund.get("risk_rating") or 3)
-    gap = fund_risk - user_risk
-    score = _clamp_score(1.5 - gap)
-    reason = f"风控匹配：用户风险等级{user_risk}，标的基金风险评级约{fund_risk}，偏差{gap}档。"
+    dd = float(fund.get("max_drawdown_3y") or 0.0)
+    vol = float(fund.get("volatility_60d") or 0.0)
+    score = _clamp_score(2.2 - 0.7 * fund_risk - 4.0 * dd - 2.5 * vol)
+    level = "风险可控" if score >= 1 else ("风险中性" if score >= 0 else "风险偏高")
+    reason = (
+        f"【核心结论】{level}；"
+        f"【硬事实数据】标的风险评级={fund_risk}，最大回撤={dd:.1%}，波动率={vol:.1%}；"
+        "【逻辑推演】风险评级、回撤和波动共同刻画标的在极端行情下的防御上限，属于历史风险画像；"
+        f"【风险评分】{score}"
+    )
     return {"agent_scores": {"risk": score}, "agent_reasons": {"risk": reason}}
 
 
@@ -222,6 +314,25 @@ def node_risk(state: MAFBState) -> dict[str, Any]:
     return _risk_rule(state)
 
 
+def node_profiling(state: MAFBState) -> dict[str, Any]:
+    fund = state.get("fund_data") or {}
+    llm = invoke_finance_agent_score(
+        "profiling",
+        "画像匹配分析师（标的风格与用户画像适配评估）",
+        fund,
+        list(state.get("rag_chunks") or []),
+        int(state.get("risk_level") or 3),
+        user_profile=dict(state.get("user_profile") or {}),
+    )
+    if llm:
+        return {
+            "agent_scores": {"profiling": llm.score},
+            "agent_reasons": {"profiling": llm.reason},
+        }
+    score, reason = _fbti_track_alignment_score(state)
+    return {"agent_scores": {"profiling": score}, "agent_reasons": {"profiling": reason}}
+
+
 def node_kline_similar(state: MAFBState) -> dict[str, Any]:
     """K 线 / 净值序列相似：PAA+粗排+带窗 DTW 精排（tiered）。"""
     code = (state.get("fund_code") or "510300").strip()
@@ -230,13 +341,30 @@ def node_kline_similar(state: MAFBState) -> dict[str, Any]:
         rows = find_similar_kline_funds(code, top_n=5, days=days, method="tiered")
     except Exception:
         rows = []
+    sim = float(rows[0].get("similarity") or 0.0) if rows else 0.0
+    kline_score = _clamp_score((sim - 0.75) * 6.0)
+    level = "形态高度相似" if sim >= 0.85 else ("形态中度相似" if sim >= 0.7 else "形态相似度偏低")
     reason = (
-        f"K线相似基金：近 {days} 日 PAA 粗排 + 带窗 DTW 精排（tiered），"
-        f"与目录内基金比较（历史形态，非预测）。"
+        f"【核心结论】{level}；"
+        f"【硬事实数据】近{days}日DTW最高相似度={sim:.2f}，方法=tiered(PAA+DTW)；"
+        "【逻辑推演】相似度衡量历史曲线形态接近程度，仅用于形态学参考，不代表未来走势复现；"
+        f"【形态评分】{kline_score}"
     )
+    fund = state.get("fund_data") or {}
+    kline_chunks = _build_kline_symbolic_chunks(code, rows, days=days)
+    llm = invoke_finance_agent_score(
+        "kline",
+        "K线形态学专家（PAA序列指纹+形态标签+DTW案例类比）",
+        fund,
+        list(state.get("rag_chunks") or []) + kline_chunks,
+        int(state.get("risk_level") or 3),
+    )
+    if llm:
+        reason = llm.reason
+        kline_score = llm.score
     return {
         "kline_similar_funds": rows,
-        "agent_scores": {"kline": 0},
+        "agent_scores": {"kline": kline_score},
         "agent_reasons": {"kline": reason},
         "compliance_notes": ["K线相似度：形态相近标的（净值序列，演示）。"],
     }
@@ -245,7 +373,6 @@ def node_kline_similar(state: MAFBState) -> dict[str, Any]:
 def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
     profile = state.get("user_profile") or {}
     fund = state.get("fund_data") or {}
-    score_p, reason_p = _fbti_track_alignment_score(state)
     risk = int(profile.get("risk_level") or 3)
     cap = round(min(0.78, 0.52 + risk * 0.05), 3)
     core_weight = round(min(0.45 + risk * 0.04, 0.65, cap - 0.1), 3)
@@ -277,8 +404,6 @@ def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
     ]
     return {
         "proposed_portfolio": portfolio,
-        "agent_scores": {"profiling": score_p},
-        "agent_reasons": {"profiling": reason_p},
         "compliance_notes": ["资产配置：结构化权重草案（非投资建议，演示）。"],
     }
 
@@ -416,7 +541,7 @@ def node_blocked(state: MAFBState) -> dict[str, Any]:
 
 
 def route_parallel_analysts(state: MAFBState):
-    """LangGraph 原生并行：基本面 / 技术面 / 风控 / K线相似 四路 fan-out（Send）。"""
+    """第一阶段并行：基本面 / 技术面 / 风控 三路先行。"""
     try:
         from langgraph.types import Send
     except ModuleNotFoundError:
@@ -426,5 +551,4 @@ def route_parallel_analysts(state: MAFBState):
         Send("fundamental", state),
         Send("technical", state),
         Send("risk", state),
-        Send("kline_similar", state),
     ]

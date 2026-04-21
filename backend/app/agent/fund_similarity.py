@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
+import time
 from datetime import date, timedelta
 from typing import Any, Literal
 
@@ -331,6 +332,9 @@ def _tiered_similarity_rows(
     _, top_idx = _faiss_topk_ip(tgt_c, feats, m_take)
 
     dtw_rows: list[tuple[float, dict[str, Any]]] = []
+    fine_timeout_sec = float(settings.mafb_kline_fine_timeout_sec)
+    fine_t0 = time.monotonic()
+    degraded_fast_mode = False
     for ii in top_idx.tolist():
         i = int(ii)
         if i < 0 or i >= len(cand):
@@ -341,18 +345,24 @@ def _tiered_similarity_rows(
         peer_vec = item["peer_vec"]
         peer_synth = item["peer_synth"]
         coarse_sim = float(item["coarse_sim"])
-        try:
-            fine_sim = similarity_dtw_banded(tgt_master, peer_vec, settings.mafb_kline_dtw_band_ratio)
-        except Exception:
-            logger.debug("banded dtw failed: %s vs %s", code, oc, exc_info=True)
+        fine_budget_exceeded = fine_timeout_sec > 0 and (time.monotonic() - fine_t0) > fine_timeout_sec
+        if fine_budget_exceeded:
+            degraded_fast_mode = True
             fine_sim = float(max(0.0, min(1.0, (coarse_sim + 1) / 2)))
+        else:
+            try:
+                fine_sim = similarity_dtw_banded(tgt_master, peer_vec, settings.mafb_kline_dtw_band_ratio)
+            except Exception:
+                logger.debug("banded dtw failed: %s vs %s", code, oc, exc_info=True)
+                fine_sim = float(max(0.0, min(1.0, (coarse_sim + 1) / 2)))
 
         src_note = ""
         if tgt_synth or peer_synth:
             src_note = "（部分净值序列为演示合成，用于算法对齐演示）"
         rationale = (
             f"近 {days} 日：PAA({paa_bins}) 降维 + {'Faiss IP' if _FAISS_AVAILABLE else '归一向量内积'}粗排，"
-            f"再对粗排前 {m_take} 只做带窗 DTW 精排（历史形态，非预测）{src_note}"
+            f"再对粗排前 {m_take} 只做带窗 DTW 精排（历史形态，非预测）"
+            f"{'；本次触发快速降级（返回粗排近似）' if fine_budget_exceeded else ''}{src_note}"
         )
         dtw_rows.append(
             (
@@ -365,6 +375,7 @@ def _tiered_similarity_rows(
                     "coarse_similarity": round(float(coarse_sim), 4),
                     "method": "tiered",
                     "pipeline": "paa_ip_dtw_band",
+                    "fast_mode": bool(fine_budget_exceeded),
                     "window_days": days,
                     "aligned_points": int(len(tgt_master)),
                     "nav_series": "synthetic" if (tgt_synth or peer_synth) else "live",
@@ -374,7 +385,10 @@ def _tiered_similarity_rows(
         )
 
     dtw_rows.sort(key=lambda x: x[0], reverse=True)
-    return [x[1] for x in dtw_rows[:top_n]]
+    out = [x[1] for x in dtw_rows[:top_n]]
+    if degraded_fast_mode:
+        logger.info("kline tiered fine phase timeout, fallback to coarse approx: target=%s days=%s", code, days)
+    return out
 
 
 def find_similar_kline_funds(

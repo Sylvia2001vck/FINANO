@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -14,13 +15,15 @@ from app.agent.fund_catalog import get_fund_by_code, list_funds_catalog_sample, 
 from app.agent.fund_similarity import find_similar_kline_funds
 from app.services.similar_funds import similar_funds
 from app.agent.graph import get_mafb_state_after_stream, invoke_mafb, stream_mafb_stages
+from app.agent.task_registry import create_mafb_task, get_mafb_task
+from app.agent.llm_client import probe_qwen_llm
 from app.agent.profiling import build_user_profile
 from app.agent.top5 import build_top5_personalized_entertainment
 from app.core.exceptions import APIException
 from app.core.responses import success_response
 from app.core.security import get_current_user
 from app.db.session import get_db
-from app.modules.agent.schemas import AgentProfileSave, MAFBRunRequest
+from app.modules.agent.schemas import AgentProfileSave, LLMProbeRequest, MAFBRunRequest
 from app.modules.user.models import User
 from app.modules.user.service import update_investor_profile
 from app.services.ai_fund_selector import iter_fbti_ai_selection_sse_events, run_fbti_ai_selection
@@ -45,6 +48,8 @@ def _initial_state(payload: MAFBRunRequest, risk_preference: int | None, fbti_pr
         "fund_code": payload.fund_code.strip(),
         "layout_facing": None,
         "risk_preference": risk_preference,
+        "status": "queued",
+        "task_id": "",
         "agent_scores": {},
         "agent_reasons": {},
         "compliance_notes": [],
@@ -169,6 +174,12 @@ def run_mafb_pipeline_stream(
 
     def event_gen():
         try:
+            bootstrap = {
+                "event": "stage",
+                "node": "bootstrap",
+                "label": "执行计划已生成：正在启动基本面/技术面/风控/K线相似并行分析…",
+            }
+            yield f"data: {json.dumps(bootstrap, ensure_ascii=False)}\n\n"
             for ev in stream_mafb_stages(initial, thread_id):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
             final = get_mafb_state_after_stream(thread_id) or invoke_mafb(initial)
@@ -186,6 +197,76 @@ def run_mafb_pipeline_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/run/async")
+def run_mafb_pipeline_async(
+    payload: MAFBRunRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    异步注册任务：立即返回 task_id，后端后台线程跑 LangGraph。
+    可轮询 GET /agent/status/{task_id} 获取阶段与最终结果，规避网关长连接超时。
+    """
+    user = db.get(User, current_user.id)
+    if not user:
+        raise APIException(code=10001, status_code=404)
+    initial = _initial_state(payload, user.risk_preference, user.fbti_profile)
+    task_id = create_mafb_task(initial, owner_user_id=current_user.id)
+    return success_response(
+        data={"task_id": task_id, "status": "queued"},
+        message="MAFB 任务已提交",
+    )
+
+
+@router.get("/status/{task_id}")
+def get_mafb_pipeline_status(
+    task_id: str,
+    since: int = Query(0, ge=0, description="事件游标：仅返回 [since:] 的新事件"),
+    current_user: User = Depends(get_current_user),
+):
+    rec = get_mafb_task(task_id)
+    if not rec:
+        raise APIException(code=40004, message="task not found", status_code=404)
+    if int(rec.get("owner_user_id") or 0) != int(current_user.id):
+        raise APIException(code=10003, status_code=403, message="forbidden")
+
+    status = str(rec.get("status") or "unknown")
+    out: dict[str, Any] = {
+        "task_id": task_id,
+        "status": status,
+        "stage_node": rec.get("stage_node"),
+        "stage_label": rec.get("stage_label"),
+        "error": rec.get("error"),
+        "created_at": rec.get("created_at"),
+        "updated_at": rec.get("updated_at"),
+        "done": status in ("completed", "failed"),
+    }
+    trace_events = list(rec.get("trace_events") or [])
+    if since >= len(trace_events):
+        out["trace_events"] = []
+        out["next_cursor"] = len(trace_events)
+    else:
+        out["trace_events"] = trace_events[since:]
+        out["next_cursor"] = len(trace_events)
+    if status == "completed" and isinstance(rec.get("result_state"), dict):
+        out["data"] = _mafb_response_payload(rec["result_state"])
+    return success_response(data=out, message="ok")
+
+
+@router.post("/llm-probe")
+def llm_probe(
+    payload: LLMProbeRequest,
+    _user: User = Depends(get_current_user),
+):
+    """Qwen 通道快速探针：返回耗时、状态、错误码与 raw 片段。"""
+    data = probe_qwen_llm(
+        payload.prompt,
+        model=(payload.model or "").strip() or None,
+        timeout_sec=float(payload.timeout_sec),
+    )
+    return success_response(data=data, message="ok" if data.get("ok") else "probe_failed")
 
 
 @router.get("/funds/catalog-status")

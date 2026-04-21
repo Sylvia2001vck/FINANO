@@ -12,6 +12,42 @@ export interface MAFBRunData {
   state_snapshot: Record<string, unknown>;
 }
 
+export interface MAFBTaskSubmitData {
+  task_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+}
+
+export interface MAFBTaskStatusData {
+  task_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  stage_node?: string | null;
+  stage_label?: string | null;
+  error?: string | null;
+  created_at?: number;
+  updated_at?: number;
+  done: boolean;
+  trace_events?: Array<{ ts?: number; kind?: string; message?: string; node?: string }>;
+  next_cursor?: number;
+  data?: MAFBRunData;
+}
+
+export interface LLMProbePayload {
+  model?: string;
+  prompt: string;
+  timeout_sec?: number;
+}
+
+export interface LLMProbeData {
+  ok: boolean;
+  channel: string;
+  model: string;
+  elapsed_sec: number;
+  status_code?: number | null;
+  code?: string | null;
+  message?: string | null;
+  raw?: string | null;
+}
+
 export interface AgentProfilePayload {
   user_birth: string;
   user_mbti: string;
@@ -20,6 +56,29 @@ export interface AgentProfilePayload {
 
 export async function runMafb(payload: MAFBRunPayload) {
   const response = await api.post<ApiEnvelope<MAFBRunData>>("/agent/run", payload);
+  return response.data.data;
+}
+
+/** 异步提交 MAFB：立即返回 task_id，后续轮询 status 接口 */
+export async function runMafbAsync(payload: MAFBRunPayload) {
+  const response = await api.post<ApiEnvelope<MAFBTaskSubmitData>>("/agent/run/async", payload, {
+    skipGlobalLoading: true
+  });
+  return response.data.data;
+}
+
+export async function getMafbTaskStatus(taskId: string, since = 0) {
+  const response = await api.get<ApiEnvelope<MAFBTaskStatusData>>(`/agent/status/${taskId}`, {
+    params: { since },
+    skipGlobalLoading: true
+  });
+  return response.data.data;
+}
+
+export async function postLlmProbe(payload: LLMProbePayload) {
+  const response = await api.post<ApiEnvelope<LLMProbeData>>("/agent/llm-probe", payload, {
+    skipGlobalLoading: true
+  });
   return response.data.data;
 }
 
@@ -234,6 +293,7 @@ export interface KlineSimilarFundRow {
   /** tiered 粗排（PAA+归一内积），有则展示 */
   coarse_similarity?: number;
   pipeline?: string;
+  fast_mode?: boolean;
   window_days?: number;
   aligned_points?: number;
   nav_series?: string;

@@ -24,3 +24,9 @@ class MAFBRunRequest(BaseModel):
 class MAFBRunResponse(BaseModel):
     final_report: dict[str, Any]
     state_snapshot: dict[str, Any]
+
+
+class LLMProbeRequest(BaseModel):
+    model: str = Field(default="", description="可选覆盖模型名；为空时使用 FINANCE_MODEL_NAME / QWEN_FINANCE_MODEL")
+    prompt: str = Field(min_length=1, max_length=2000, description="调试用短 prompt")
+    timeout_sec: float = Field(default=10.0, ge=2.0, le=60.0, description="单次探针超时（秒）")

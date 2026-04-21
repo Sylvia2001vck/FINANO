@@ -26,11 +26,13 @@ import type { FundNavCurvePanelHandle } from "../../components/FundNavCurvePanel
 import { PageCard } from "../../components/UI/PageCard";
 import {
   addMyAgentFunds,
+  getMafbTaskStatus,
   getFundCatalogStatus,
   listAgentFunds,
+  postLlmProbe,
   postWarmFundCatalog,
   removeMyAgentFund,
-  runMafbStream,
+  runMafbAsync,
   fetchKlineSimilarFunds,
   fetchSimilarFunds,
   type AgentFundsListResponse,
@@ -38,6 +40,7 @@ import {
   type ListAgentFundsParams,
   type SimilarFundRow
 } from "../../services/agent";
+import { fetchFundLsjzJson } from "../../services/fundNav";
 
 function pctOrDash(v: unknown): string {
   const n = Number(v);
@@ -49,6 +52,13 @@ function pctOrDash(v: unknown): string {
 function clipRagPreview(v: unknown, maxLen = 72): string {
   const s = String(v ?? "");
   return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+}
+
+function fmtDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  const dd = `${d.getDate()}`.padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 function PositionAdviceView({ data }: { data: Record<string, unknown> | undefined }) {
@@ -103,6 +113,30 @@ export default function MAFBPage() {
   const [simKlineRows, setSimKlineRows] = useState<KlineSimilarFundRow[]>([]);
   const [simBusy, setSimBusy] = useState(false);
   const fundNavRef = useRef<FundNavCurvePanelHandle>(null);
+  const [runTrace, setRunTrace] = useState<string[]>([]);
+  const [runLogVisible, setRunLogVisible] = useState(false);
+  const [runLogStatus, setRunLogStatus] = useState<"running" | "success" | "failed" | null>(null);
+  const [runLogCollapsed, setRunLogCollapsed] = useState(false);
+  const [runLogTitle, setRunLogTitle] = useState("调用记录");
+  const navWarmRef = useRef<Set<string>>(new Set());
+  const [probeBusy, setProbeBusy] = useState(false);
+  const [probeResult, setProbeResult] = useState<Record<string, unknown> | null>(null);
+
+  const preheatFundNav = async (codeRaw?: string) => {
+    const c = String(codeRaw ?? "").trim();
+    if (!/^\d{6}$/.test(c)) return;
+    const end = new Date();
+    const start = new Date(end);
+    start.setMonth(start.getMonth() - 1);
+    const key = `${c}|${fmtDate(start)}|${fmtDate(end)}`;
+    if (navWarmRef.current.has(key)) return;
+    navWarmRef.current.add(key);
+    try {
+      await fetchFundLsjzJson(c, { startDate: fmtDate(start), endDate: fmtDate(end) });
+    } catch {
+      /* 预热失败不影响主流程 */
+    }
+  };
 
   const fetchFunds = (params: ListAgentFundsParams) => {
     setFundTableLoading(true);
@@ -275,28 +309,77 @@ export default function MAFBPage() {
     }
   };
 
+  const runLlmProbe = async () => {
+    setProbeBusy(true);
+    try {
+      const v = await form.validateFields(["fund_code"]);
+      const fundCode = String(v.fund_code ?? "").trim();
+      const data = await postLlmProbe({
+        timeout_sec: 10,
+        prompt: `请只返回 JSON：{"agent_name":"risk","score":0,"reason":"历史不代表未来"}。基金代码：${fundCode}`
+      });
+      setProbeResult(data as unknown as Record<string, unknown>);
+      message.info(data.ok ? "探针成功：模型通道可用" : "探针失败：请看状态码与错误信息");
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "探针失败");
+    } finally {
+      setProbeBusy(false);
+    }
+  };
+
   const onRun = async (values: { fund_code: string; include_fbti?: boolean }) => {
     setLoading(true);
-    setRunStage("正在连接 MAFB 流水线…");
+    setRunStage("正在提交任务…");
+    setRunTrace([]);
+    setRunLogVisible(true);
+    setRunLogStatus("running");
+    setRunLogCollapsed(false);
+    setRunLogTitle(`调用记录 · ${values.fund_code.trim()} · ${new Date().toLocaleTimeString()}`);
     try {
-      const data = await runMafbStream(
-        {
-          fund_code: values.fund_code.trim(),
-          include_fbti: values.include_fbti !== false
-        },
-        {
-          onStage: (_node, label) => {
-            setRunStage(`正在执行：${label}`);
-          }
+      const submit = await runMafbAsync({
+        fund_code: values.fund_code.trim(),
+        include_fbti: values.include_fbti !== false
+      });
+      let cursor = 0;
+      let done = false;
+      let finalData: Record<string, unknown> | null = null;
+      const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+      for (let i = 0; i < 900; i++) {
+        const st = await getMafbTaskStatus(submit.task_id, cursor);
+        if (st.stage_label) {
+          setRunStage(`正在执行：${st.stage_label}`);
         }
-      );
-      setReport(data.final_report as Record<string, unknown>);
+        const evs = st.trace_events || [];
+        if (evs.length) {
+          setRunTrace((prev) =>
+            [...prev, ...evs.map((e) => `${e.kind || "event"}: ${e.message || ""}`)].slice(-28)
+          );
+        }
+        cursor = typeof st.next_cursor === "number" ? st.next_cursor : cursor + evs.length;
+        if (st.done) {
+          done = true;
+          if (st.status === "completed" && st.data?.final_report) {
+            finalData = st.data.final_report as Record<string, unknown>;
+          } else {
+            throw new Error(st.error || "任务失败");
+          }
+          break;
+        }
+        await sleep(1000);
+      }
+      if (!done) {
+        throw new Error("任务执行时间过长，请稍后在结果区重试查询");
+      }
+      if (finalData) setReport(finalData);
+      setRunLogStatus("success");
+      setRunLogCollapsed(true);
       message.success("MAFB 流水线执行完成");
     } catch (error) {
+      setRunLogStatus("failed");
+      setRunLogCollapsed(false);
       message.error(error instanceof Error ? error.message : "执行失败");
     } finally {
       setLoading(false);
-      setRunStage(null);
     }
   };
 
@@ -324,8 +407,57 @@ export default function MAFBPage() {
       </Typography.Paragraph>
 
       <PageCard title="基金代码与运行">
-        {loading && runStage ? (
-          <Alert type="info" showIcon style={{ marginBottom: 16 }} message={runStage} />
+        {runLogVisible ? (
+          runLogStatus === "failed" ? (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={runStage || "运行失败"}
+              description={
+                <div style={{ maxHeight: 200, overflow: "auto", fontSize: 12 }}>
+                  {runTrace.map((line, idx) => (
+                    <div key={`${idx}-${line}`}>{line}</div>
+                  ))}
+                </div>
+              }
+            />
+          ) : runLogStatus === "success" ? (
+            <Collapse
+              style={{ marginBottom: 16 }}
+              activeKey={runLogCollapsed ? [] : ["log"]}
+              onChange={(keys) => setRunLogCollapsed(!(keys as string[]).includes("log"))}
+              items={[
+                {
+                  key: "log",
+                  label: `${runLogTitle}（成功，${runTrace.length} 条）`,
+                  children: (
+                    <div style={{ maxHeight: 200, overflow: "auto", fontSize: 12 }}>
+                      {runTrace.map((line, idx) => (
+                        <div key={`${idx}-${line}`}>{line}</div>
+                      ))}
+                    </div>
+                  )
+                }
+              ]}
+            />
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={runStage || "运行中"}
+              description={
+                runTrace.length ? (
+                  <div style={{ maxHeight: 160, overflow: "auto", fontSize: 12 }}>
+                    {runTrace.map((line, idx) => (
+                      <div key={`${idx}-${line}`}>{line}</div>
+                    ))}
+                  </div>
+                ) : undefined
+              }
+            />
+          )
         ) : null}
         <Form
           form={form}
@@ -344,11 +476,20 @@ export default function MAFBPage() {
             ]}
           >
             <Space.Compact style={{ width: "100%", maxWidth: 400 }}>
-              <Input placeholder="如 510300" maxLength={6} style={{ flex: 1 }} disabled={agentOpBusy} />
+              <Input
+                placeholder="如 510300"
+                maxLength={6}
+                style={{ flex: 1 }}
+                disabled={agentOpBusy}
+                onBlur={(e) => {
+                  void preheatFundNav(e.target.value);
+                }}
+              />
               <FundCodeOcrButton
                 disabled={agentOpBusy}
                 onResolved={(code) => {
                   form.setFieldsValue({ fund_code: code });
+                  void preheatFundNav(code);
                 }}
               />
             </Space.Compact>
@@ -397,7 +538,31 @@ export default function MAFBPage() {
             >
               查询相似 TOP10
             </Button>
+            <Button loading={probeBusy} disabled={agentOpBusy} onClick={() => void runLlmProbe()}>
+              一键探针 Qwen
+            </Button>
           </Space>
+          {probeResult ? (
+            <Alert
+              style={{ marginTop: 12 }}
+              type={probeResult.ok ? "success" : "warning"}
+              showIcon
+              message={`探针结果 · model=${String(probeResult.model || "—")} · elapsed=${String(
+                probeResult.elapsed_sec ?? "—"
+              )}s`}
+              description={
+                <div style={{ fontSize: 12 }}>
+                  <div>
+                    status={String(probeResult.status_code ?? "—")} code={String(probeResult.code ?? "—")}
+                  </div>
+                  <div>message={String(probeResult.message ?? "—")}</div>
+                  <div style={{ marginTop: 6, maxHeight: 140, overflow: "auto", whiteSpace: "pre-wrap" }}>
+                    raw={String(probeResult.raw ?? "—")}
+                  </div>
+                </div>
+              }
+            />
+          ) : null}
         </Form>
 
         <div style={{ marginTop: 22 }}>

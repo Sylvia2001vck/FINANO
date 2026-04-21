@@ -42,6 +42,23 @@ class Settings(BaseSettings):
     mafb_llm_mode: str = "auto"
     # 并行打分智能体（基本面/技术面/风控）单次 LLM 总等待上限（秒），超时走规则引擎，避免卡死
     mafb_agent_llm_timeout_sec: float = Field(default=16.0, alias="MAFB_AGENT_LLM_TIMEOUT_SEC", ge=4, le=120)
+    # 云端主模型（DashScope）单链路超时（秒），超时后立即降级到后续通道
+    mafb_cloud_primary_timeout_sec: float = Field(default=8.0, alias="MAFB_CLOUD_PRIMARY_TIMEOUT_SEC", ge=2.0, le=30.0)
+    # 主模型协议/路由异常时的自动回退模型（同 DashScope 通道）
+    mafb_qwen_fallback_model: str = Field(default="qwen-plus", alias="MAFB_QWEN_FALLBACK_MODEL")
+    # qwen3* 仅灰度：false 时主链路不启用 qwen3（建议只在探针/灰度环境开启）
+    mafb_qwen3_gray_enabled: bool = Field(default=False, alias="MAFB_QWEN3_GRAY_ENABLED")
+    # qwen3 灰度允许的 Agent 列表（逗号分隔）：例如 profiling,kline
+    mafb_qwen3_gray_agents_raw: str = Field(default="profiling,kline", alias="MAFB_QWEN3_GRAY_AGENTS")
+    # qwen3 协议握手独立超时（秒），失败立即降级，避免吃满主链路 timeout
+    mafb_llm_handshake_timeout_sec: float = Field(default=2.5, alias="MAFB_LLM_HANDSHAKE_TIMEOUT_SEC", ge=1.0, le=8.0)
+    # 按 Agent 单独指定模型（留空则回退到 FINANCE_MODEL_NAME / QWEN_FINANCE_MODEL）
+    mafb_model_fundamental: str = Field(default="", alias="MAFB_MODEL_FUNDAMENTAL")
+    mafb_model_technical: str = Field(default="", alias="MAFB_MODEL_TECHNICAL")
+    mafb_model_risk: str = Field(default="", alias="MAFB_MODEL_RISK")
+    mafb_model_profiling: str = Field(default="", alias="MAFB_MODEL_PROFILING")
+    mafb_model_kline: str = Field(default="", alias="MAFB_MODEL_KLINE")
+    mafb_model_compliance: str = Field(default="", alias="MAFB_MODEL_COMPLIANCE")
     # 并行智能体的 LLM 并发上限（默认 1：减少同模型并发排队导致的超时）
     mafb_llm_max_concurrency: int = Field(default=1, alias="MAFB_LLM_MAX_CONCURRENCY", ge=1, le=8)
     # K 线相似：对候选基金拉历史净值的最大次数（再大主要被 lsjz 节流拖慢）
@@ -52,6 +69,8 @@ class Settings(BaseSettings):
     mafb_kline_fine_pool: int = Field(default=48, alias="MAFB_KLINE_FINE_POOL", ge=8, le=200)
     # Sakoe-Chiba 带相对半宽（越大越接近全量 DTW、越慢）
     mafb_kline_dtw_band_ratio: float = Field(default=0.18, alias="MAFB_KLINE_DTW_BAND_RATIO", ge=0.05, le=0.5)
+    # tiered 精排最大耗时（秒）；超时时回退粗排结果并标记 fast_mode
+    mafb_kline_fine_timeout_sec: float = Field(default=2.0, alias="MAFB_KLINE_FINE_TIMEOUT_SEC", ge=0.2, le=20.0)
     deepseek_api_key: str = ""
     deepseek_api_base: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-chat"
@@ -93,6 +112,10 @@ class Settings(BaseSettings):
         """MAFB / DashScope 实际调用的模型名（通用强模型 + 金融 Prompt ≈ 垂直金融助手）。"""
         name = (self.finance_model_name or "").strip()
         return name if name else self.qwen_finance_model
+
+    @property
+    def mafb_qwen3_gray_agents(self) -> List[str]:
+        return [item.strip().lower() for item in self.mafb_qwen3_gray_agents_raw.split(",") if item.strip()]
 
     @property
     def dashscope_http_api_root(self) -> str | None:

@@ -13,6 +13,7 @@ from app.agent.nodes import (
     node_fundamental,
     node_kline_similar,
     node_load_fund_and_rag,
+    node_profiling,
     node_risk,
     node_technical,
     node_user_profiling,
@@ -30,8 +31,9 @@ MAFB_NODE_LABELS: dict[str, str] = {
     "rag": "基金档案加载与 FAISS 向量检索",
     "fundamental": "基本面智能体（规模、夏普、回撤等）",
     "technical": "技术面智能体（动量与趋势特征）",
-    "risk": "风控智能体（与用户风险等级匹配）",
-    "kline_similar": "K 线相似基金检索",
+    "risk": "风控智能体（标的下行风险与防御能力）",
+    "kline_similar": "K线形态学智能体（PAA/DTW 形态重演）",
+    "profiling": "画像匹配智能体（标的 × 用户性格适配）",
     "allocation": "资产配置与组合权重草案",
     "compliance": "合规审查（禁宣词 / 错配 / 可选大模型）",
     "voting": "加权汇总与 TOP5 / 报告生成",
@@ -47,6 +49,7 @@ def build_mafb_graph() -> StateGraph:
     graph.add_node("technical", node_technical)
     graph.add_node("risk", node_risk)
     graph.add_node("kline_similar", node_kline_similar)
+    graph.add_node("profiling", node_profiling)
     graph.add_node("allocation", node_asset_allocation)
     graph.add_node("compliance", node_compliance)
     graph.add_node("voting", node_voting)
@@ -55,10 +58,11 @@ def build_mafb_graph() -> StateGraph:
     graph.set_entry_point("profile")
     graph.add_edge("profile", "rag")
     graph.add_conditional_edges("rag", route_parallel_analysts)
-    graph.add_edge("fundamental", "allocation")
-    graph.add_edge("technical", "allocation")
-    graph.add_edge("risk", "allocation")
-    graph.add_edge("kline_similar", "allocation")
+    graph.add_edge("fundamental", "kline_similar")
+    graph.add_edge("technical", "kline_similar")
+    graph.add_edge("risk", "kline_similar")
+    graph.add_edge("kline_similar", "profiling")
+    graph.add_edge("profiling", "allocation")
     graph.add_edge("allocation", "compliance")
     graph.add_conditional_edges(
         "compliance",

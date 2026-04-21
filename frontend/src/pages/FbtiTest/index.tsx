@@ -36,7 +36,7 @@ export default function FbtiTestPage() {
     void getFbtiProfile()
       .then((d) => {
         if (d.fbti_profile) {
-          navigate("/fbti-result", { replace: true });
+          navigate("/user-community#fbti", { replace: true });
         }
       })
       .catch(() => {})
@@ -70,7 +70,7 @@ export default function FbtiTestPage() {
         setAuth({ access_token: token, token_type: "bearer", user: data.user });
       }
       message.success("测试完成");
-      navigate("/fbti-result", { replace: true });
+      navigate("/user-community#fbti", { replace: true });
     } catch (e) {
       message.error(e instanceof Error ? e.message : "提交失败");
     }

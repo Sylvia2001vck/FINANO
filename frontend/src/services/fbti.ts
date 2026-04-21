@@ -1,4 +1,5 @@
 import { api, ApiEnvelope } from "./api";
+import { useUserStore } from "../store/userStore";
 import { User } from "../types/user";
 
 export interface FbtiArchetype {
@@ -68,6 +69,75 @@ export interface FbtiSelectResponse {
 }
 
 export async function postFbtiAiSelect() {
-  const response = await api.post<ApiEnvelope<FbtiSelectResponse>>("/agent/ai/fbti-select", {});
+  const response = await api.post<ApiEnvelope<FbtiSelectResponse>>("/agent/ai/fbti-select", {}, {
+    skipGlobalLoading: true,
+    timeout: 600_000
+  });
   return response.data.data;
+}
+
+/** SSE：阶段文案 + 最终结果（与 postFbtiAiSelect 返回结构一致） */
+export async function postFbtiAiSelectStream(handlers: { onStage?: (node: string, label: string) => void }) {
+  const baseURL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+  const token = useUserStore.getState().token;
+  const res = await fetch(`${baseURL}/agent/ai/fbti-select/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({})
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const j = (await res.json()) as { message?: string };
+      if (j?.message) detail = j.message;
+    } catch {
+      try {
+        const t = await res.text();
+        if (t) detail = t.slice(0, 200);
+      } catch {
+        /* ignore */
+      }
+    }
+    throw new Error(detail);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("无法读取响应流");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: FbtiSelectResponse | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const block of chunks) {
+      for (const line of block.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        const msg = JSON.parse(raw) as {
+          event?: string;
+          node?: string;
+          label?: string;
+          data?: FbtiSelectResponse;
+          message?: string;
+        };
+        if (msg.event === "stage" && msg.node && msg.label) {
+          handlers.onStage?.(msg.node, msg.label);
+        }
+        if (msg.event === "result" && msg.data) {
+          result = msg.data;
+        }
+        if (msg.event === "error") {
+          throw new Error(msg.message || "FBTI 选股流式失败");
+        }
+      }
+    }
+  }
+  if (!result) throw new Error("未收到完整选股结果");
+  return result;
 }

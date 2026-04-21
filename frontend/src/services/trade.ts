@@ -6,8 +6,30 @@ export async function fetchTrades() {
   return response.data.data;
 }
 
-export async function createTrade(payload: Omit<Trade, "id" | "user_id" | "created_at" | "updated_at">) {
+export interface SecuritySearchHit {
+  code: string;
+  name: string;
+}
+
+/** 新版「买入/卖出窗口」创建体；旧版 OCR 仍为单笔 trade_date 结构 */
+export type TradeCreatePayload = Record<string, unknown>;
+
+export async function createTrade(payload: TradeCreatePayload) {
   const response = await api.post<ApiEnvelope<Trade>>("/trades", payload);
+  return response.data.data;
+}
+
+export async function searchTradeSecurities(q: string, limit = 40) {
+  const qs = new URLSearchParams({ q, limit: String(limit) });
+  const response = await api.get<ApiEnvelope<{ items: SecuritySearchHit[]; total: number }>>(
+    `/trades/securities/search?${qs.toString()}`
+  );
+  return response.data.data;
+}
+
+export async function lookupTradeSecurity(code: string) {
+  const c = encodeURIComponent(code.trim());
+  const response = await api.get<ApiEnvelope<{ code: string; name: string }>>(`/trades/securities/lookup/${c}`);
   return response.data.data;
 }
 
@@ -36,7 +58,10 @@ export async function createNote(payload: { trade_id?: number; title: string; co
 }
 
 export async function analyzeTrade(tradeId: number) {
-  const response = await api.post<ApiEnvelope<AiAnalysisResult>>(`/ai/analyze/${tradeId}`);
+  const response = await api.post<ApiEnvelope<AiAnalysisResult>>(`/ai/analyze/${tradeId}`, undefined, {
+    skipGlobalLoading: true,
+    timeout: 120_000
+  });
   return response.data.data;
 }
 

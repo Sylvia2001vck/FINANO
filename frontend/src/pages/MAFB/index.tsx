@@ -1,4 +1,4 @@
-import { SearchOutlined } from "@ant-design/icons";
+import { LineChartOutlined, SearchOutlined } from "@ant-design/icons";
 import {
   Alert,
   Button,
@@ -19,8 +19,10 @@ import {
   Typography,
   message
 } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FundCodeOcrButton } from "../../components/FundCodeOcrButton";
+import { FundNavCurvePanel } from "../../components/FundNavCurvePanel";
+import type { FundNavCurvePanelHandle } from "../../components/FundNavCurvePanel";
 import { PageCard } from "../../components/UI/PageCard";
 import {
   addMyAgentFunds,
@@ -100,6 +102,7 @@ export default function MAFBPage() {
   const [simFeatureRows, setSimFeatureRows] = useState<SimilarFundRow[]>([]);
   const [simKlineRows, setSimKlineRows] = useState<KlineSimilarFundRow[]>([]);
   const [simBusy, setSimBusy] = useState(false);
+  const fundNavRef = useRef<FundNavCurvePanelHandle>(null);
 
   const fetchFunds = (params: ListAgentFundsParams) => {
     setFundTableLoading(true);
@@ -316,8 +319,8 @@ export default function MAFBPage() {
     <div className="page-stack">
       <Typography.Title level={3}>MAFB 多智能体控制台</Typography.Title>
       <Typography.Paragraph type="secondary">
-        输入 6 位基金代码后，可运行 MAFB 流水线或查询相似 TOP10（两项不可同时进行，需等当前任务结束）。勾选「纳入 FBTI」时，画像与资产配置会使用账户已保存的金融人格；不勾选则仅用账户风险偏好档位（不含人格偏好摘要）。
-        基本面 / 技术面 / 风控 / K 线 / 合规等为 LangGraph 多节点演示。
+        输入 6 位基金代码后，中间「查询基金净值」拉取东财历史净值；拉取成功后切换「近一月 / 近三月」等区间会<strong>自动重新拉取</strong>。「运行 MAFB 流水线」与「查询相似 TOP10」互斥需排队；净值查询可与二者并行。
+        勾选「纳入 FBTI」时，画像与资产配置会使用账户已保存的金融人格；不勾选则仅用账户风险偏好档位（不含人格偏好摘要）。
       </Typography.Paragraph>
 
       <PageCard title="基金代码与运行">
@@ -372,6 +375,13 @@ export default function MAFBPage() {
               运行 MAFB 流水线
             </Button>
             <Button
+              icon={<LineChartOutlined />}
+              disabled={!/^\d{6}$/.test((watchedFundCode ?? "").trim())}
+              onClick={() => void fundNavRef.current?.reload()}
+            >
+              查询基金净值
+            </Button>
+            <Button
               icon={<SearchOutlined />}
               loading={simBusy}
               disabled={loading}
@@ -390,11 +400,29 @@ export default function MAFBPage() {
           </Space>
         </Form>
 
+        <div style={{ marginTop: 22 }}>
+          <Typography.Title level={5} style={{ marginBottom: 8, marginTop: 0 }}>
+            <LineChartOutlined style={{ marginRight: 8 }} />
+            基金净值曲线
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 10, fontSize: 13 }}>
+            与上方代码联动；请先点工具栏「查询基金净值」。成功后切换「近一月 / 近三月」等会自动换数据；「更早 / 更晚」平移窗口后也会自动刷新。以 0 开头的代码会按 6 位补零请求东财接口。
+          </Typography.Paragraph>
+          <FundNavCurvePanel
+            ref={fundNavRef}
+            embedded
+            linkedFundCode={watchedFundCode}
+            chartHeight={300}
+            hideQueryButton
+          />
+        </div>
+
         {simRefCode ? (
           <div style={{ marginTop: 24 }}>
             <Typography.Title level={5}>相似基金（与上方代码一致：{simRefCode}）</Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-              统计特征余弦与 K 线对齐余弦；全市场模式下候选分层抽样，无足够净值时 K 线使用演示合成序列。
+              统计特征余弦与 K 线「tiered」：PAA 降维粗排 + 带窗 DTW 精排（接口可改 method=cosine|dtw）；全市场模式下候选分层抽样，无足够净值时 K
+              线使用演示合成序列。
             </Typography.Paragraph>
             <Row gutter={[16, 16]}>
               <Col xs={24} lg={12}>
@@ -428,7 +456,13 @@ export default function MAFBPage() {
                     { title: "代码", dataIndex: "code", width: 92 },
                     { title: "名称", dataIndex: "name", ellipsis: true },
                     { title: "赛道", dataIndex: "track", width: 88 },
-                    { title: "K线相似度", dataIndex: "similarity", width: 96 },
+                    { title: "精排", dataIndex: "similarity", width: 80 },
+                    {
+                      title: "粗排",
+                      dataIndex: "coarse_similarity",
+                      width: 76,
+                      render: (v: number | undefined) => (v == null ? "—" : v)
+                    },
                     { title: "对齐点数", dataIndex: "aligned_points", width: 88 },
                     { title: "净值来源", dataIndex: "nav_series", width: 88 },
                     { title: "说明", dataIndex: "rationale", ellipsis: true }

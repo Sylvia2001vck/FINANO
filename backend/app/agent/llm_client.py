@@ -19,6 +19,8 @@ import concurrent.futures
 import json
 import logging
 import re
+import threading
+import time
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -28,6 +30,7 @@ from app.core.dashscope_setup import apply_dashscope_settings
 from app.agent.local_qwen import invoke_local_qwen_finance
 
 logger = logging.getLogger(__name__)
+_LLM_CONCURRENCY_GATE = threading.BoundedSemaphore(value=max(1, int(settings.mafb_llm_max_concurrency)))
 
 # 通用模型 + 专业人设 = 金融分析助手（与 DashScope 控制台实际模型名配合使用）
 FINANCE_EXPERT_SYSTEM_PROMPT = """你是一位专业、持牌、严谨的金融投资顾问。
@@ -83,9 +86,31 @@ def _parse_agent_score(raw: str, expected_name: str) -> AgentScore:
     return AgentScore.model_validate(data)
 
 
+def _compact_fund_for_llm(fund: dict[str, Any]) -> dict[str, Any]:
+    """
+    仅保留打分必要字段，减少提示词体积与模型首包延迟。
+    """
+    keep = (
+        "code",
+        "name",
+        "track",
+        "risk_rating",
+        "aum_billion",
+        "sharpe_3y",
+        "max_drawdown_3y",
+        "momentum_60d",
+        "volatility_60d",
+        "fee_rate",
+    )
+    out = {k: fund.get(k) for k in keep if k in fund}
+    if not out:
+        out = dict(fund or {})
+    return out
+
+
 def _build_score_prompt(agent_role: str, fund: dict[str, Any], rag_chunks: list[str], user_risk: int) -> str:
-    rag = "\n".join(f"- {c}" for c in (rag_chunks or [])[:6])
-    fund_json = json.dumps(fund, ensure_ascii=False)
+    rag = "\n".join(f"- {c}" for c in (rag_chunks or [])[:4])
+    fund_json = json.dumps(_compact_fund_for_llm(fund), ensure_ascii=False)
     return f"""你是公募基金/ETF投研助手，仅基于给定结构化数据做事实性评估，不预测价格，不承诺收益。
 角色：{agent_role}
 用户风险等级(1-5)：{user_risk}
@@ -305,19 +330,28 @@ def invoke_finance_agent_score(
     ]
 
     deadline = settings.mafb_agent_llm_timeout_sec if llm_deadline_sec is None else llm_deadline_sec
-    if deadline and deadline > 0:
-        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        try:
-            fut = ex.submit(_invoke_finance_llm, messages, prompt)
+    gate_enter_t0 = time.monotonic()
+    _LLM_CONCURRENCY_GATE.acquire()
+    gate_wait = time.monotonic() - gate_enter_t0
+    try:
+        if gate_wait > 0.2:
+            logger.info("Finance LLM 并发闸门等待 %.2fs（agent=%s）", gate_wait, agent_key)
+
+        if deadline and deadline > 0:
+            ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                raw = fut.result(timeout=float(deadline))
-            except concurrent.futures.TimeoutError:
-                logger.warning("Finance LLM 打分超时（%ss，agent=%s），将走规则引擎", deadline, agent_key)
-                raw = None
-        finally:
-            ex.shutdown(wait=False, cancel_futures=True)
-    else:
-        raw = _invoke_finance_llm(messages, prompt)
+                fut = ex.submit(_invoke_finance_llm, messages, prompt)
+                try:
+                    raw = fut.result(timeout=float(deadline))
+                except concurrent.futures.TimeoutError:
+                    logger.warning("Finance LLM 打分超时（%ss，agent=%s），将走规则引擎", deadline, agent_key)
+                    raw = None
+            finally:
+                ex.shutdown(wait=False, cancel_futures=True)
+        else:
+            raw = _invoke_finance_llm(messages, prompt)
+    finally:
+        _LLM_CONCURRENCY_GATE.release()
 
     if raw is None:
         return None

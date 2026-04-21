@@ -42,8 +42,16 @@ class Settings(BaseSettings):
     mafb_llm_mode: str = "auto"
     # 并行打分智能体（基本面/技术面/风控）单次 LLM 总等待上限（秒），超时走规则引擎，避免卡死
     mafb_agent_llm_timeout_sec: float = Field(default=16.0, alias="MAFB_AGENT_LLM_TIMEOUT_SEC", ge=4, le=120)
+    # 并行智能体的 LLM 并发上限（默认 1：减少同模型并发排队导致的超时）
+    mafb_llm_max_concurrency: int = Field(default=1, alias="MAFB_LLM_MAX_CONCURRENCY", ge=1, le=8)
     # K 线相似：对候选基金拉历史净值的最大次数（再大主要被 lsjz 节流拖慢）
     mafb_kline_similar_max_nav_fetches: int = Field(default=64, alias="MAFB_KLINE_SIMILAR_MAX_NAV_FETCHES", ge=16, le=400)
+    # tiered：PAA 分段数（粗排特征维度）
+    mafb_kline_paa_bins: int = Field(default=32, alias="MAFB_KLINE_PAA_BINS", ge=8, le=128)
+    # tiered：粗排后进入 DTW 精排的最大候选数（控制耗时）
+    mafb_kline_fine_pool: int = Field(default=48, alias="MAFB_KLINE_FINE_POOL", ge=8, le=200)
+    # Sakoe-Chiba 带相对半宽（越大越接近全量 DTW、越慢）
+    mafb_kline_dtw_band_ratio: float = Field(default=0.18, alias="MAFB_KLINE_DTW_BAND_RATIO", ge=0.05, le=0.5)
     deepseek_api_key: str = ""
     deepseek_api_base: str = "https://api.deepseek.com/v1"
     deepseek_model: str = "deepseek-chat"
@@ -63,6 +71,15 @@ class Settings(BaseSettings):
     fund_live_quote_enabled: bool = False
     # static=内置演示池；eastmoney_full=启动后首次访问时从天天基金 fundcode_search.js 拉全市场索引（约 1.5 万+）
     fund_catalog_mode: str = Field(default="static", alias="FUND_CATALOG_MODE")
+    # 区间 lsjz-json：热数据直接内存命中（秒回）；超过热 TTL 后尝试增量合并而非整段重翻页
+    fund_lsjz_hot_ttl_sec: float = Field(default=180.0, ge=15.0, le=3600.0, alias="FUND_LSJZ_HOT_TTL_SEC")
+    fund_lsjz_stale_max_sec: float = Field(default=86400.0, ge=60.0, le=604800.0, alias="FUND_LSJZ_STALE_MAX_SEC")
+    fund_lsjz_incremental_merge: bool = Field(default=True, alias="FUND_LSJZ_INCREMENTAL_MERGE")
+    fund_lsjz_http_cache_max: int = Field(default=512, ge=32, le=5000, alias="FUND_LSJZ_HTTP_CACHE_MAX")
+    # K8s 多副本：可选 Redis 分布式缓存（未配置时自动回退进程内缓存）
+    redis_url: str = Field(default="", alias="REDIS_URL")
+    redis_cache_prefix: str = Field(default="finano", alias="REDIS_CACHE_PREFIX")
+    redis_socket_timeout_sec: float = Field(default=1.2, ge=0.2, le=10.0, alias="REDIS_SOCKET_TIMEOUT_SEC")
 
     @property
     def cors_origins(self) -> List[str]:

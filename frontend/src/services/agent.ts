@@ -231,17 +231,25 @@ export interface KlineSimilarFundRow {
   track: string;
   similarity: number;
   method: string;
+  /** tiered 粗排（PAA+归一内积），有则展示 */
+  coarse_similarity?: number;
+  pipeline?: string;
   window_days?: number;
   aligned_points?: number;
   nav_series?: string;
   rationale: string;
 }
 
-export async function fetchKlineSimilarFunds(code: string, topK = 10, days = 60) {
+export async function fetchKlineSimilarFunds(
+  code: string,
+  topK = 10,
+  days = 60,
+  method: "tiered" | "cosine" | "dtw" = "tiered"
+) {
   const response = await api.get<
     ApiEnvelope<{ reference_code: string; days: number; method: string; similar: KlineSimilarFundRow[] }>
   >("/agent/funds/kline-similar", {
-    params: { code, top_k: topK, days },
+    params: { code, top_k: topK, days, method },
     skipGlobalLoading: true,
     timeout: 120_000
   });

@@ -4,6 +4,12 @@ export interface Trade {
   id: number;
   user_id: number;
   trade_date: string;
+  /** 买入日（新版表单）；旧数据可能为 null */
+  buy_date?: string | null;
+  /** 卖出日；null 常表示仍持仓 */
+  sell_date?: string | null;
+  /** 卖出成交额（毛），已了结时有值 */
+  sell_amount?: number | null;
   symbol: string;
   name: string;
   direction: TradeDirection;

@@ -3,7 +3,7 @@ import { Button, Card, List, Space, Table, Tag, Typography, message } from "antd
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
-import { getFbtiProfile, postFbtiAiSelect, type FbtiSelectResponse } from "../../services/fbti";
+import { getFbtiProfile, postFbtiAiSelectStream, type FbtiSelectResponse } from "../../services/fbti";
 
 const WX_COLOR: Record<string, string> = {
   金: "gold",
@@ -23,12 +23,13 @@ function WuxingBadge({ text }: { text: string }) {
   );
 }
 
-/** 侧栏「AI 选股」：仅 FBTI 一键选股，与 MAFB 控制台解耦 */
+/** 独立模块：AI娱乐选基（与 MAFB、用户与社区解耦） */
 export default function AiFundPickPage() {
   const [loading, setLoading] = useState(true);
   const [hasFbti, setHasFbti] = useState(false);
   const [ai, setAi] = useState<FbtiSelectResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiStage, setAiStage] = useState<string>("");
 
   useEffect(() => {
     void getFbtiProfile()
@@ -41,11 +42,16 @@ export default function AiFundPickPage() {
 
   const runAi = async () => {
     setAiLoading(true);
+    setAiStage("连接服务…");
     try {
-      const r = await postFbtiAiSelect();
+      const r = await postFbtiAiSelectStream({
+        onStage: (_node, label) => setAiStage(label)
+      });
       setAi(r);
-      message.success("已生成组合建议");
+      setAiStage("");
+      message.success("已生成娱乐向组合建议");
     } catch (e) {
+      setAiStage("");
       message.error(e instanceof Error ? e.message : "请求失败");
     } finally {
       setAiLoading(false);
@@ -59,10 +65,11 @@ export default function AiFundPickPage() {
   if (!hasFbti) {
     return (
       <div className="page-stack">
-        <Typography.Title level={3}>AI 选股（FBTI）</Typography.Title>
+        <Typography.Title level={3}>AI娱乐选基</Typography.Title>
         <PageCard title="需要先完成 FBTI">
           <Typography.Paragraph>
-            本功能根据你的金融人格与基金目录做语义筛选。请先到「<Link to="/fbti-result">FBTI 画像</Link>」完成测试。
+            本功能根据你的金融人格与基金目录做趣味向语义筛选。请先到「
+            <Link to="/user-community#fbti">用户与社区 · FBTI 画像</Link>」完成测试。
           </Typography.Paragraph>
         </PageCard>
       </div>
@@ -71,15 +78,18 @@ export default function AiFundPickPage() {
 
   return (
     <div className="page-stack">
-      <Typography.Title level={3}>AI 选股（FBTI）</Typography.Title>
+      <Typography.Title level={3}>AI娱乐选基</Typography.Title>
       <Typography.Paragraph type="secondary">
         多阶段：偏好归纳（含五行娱乐维度）→ 随机抽样与规则 Top20 → 大模型终筛至多 5 只；无 Key 时规则兜底。
-        与 MAFB 控制台解耦：MAFB 画像仅基于 FBTI；本页的「个性化 TOP5」为八字五行流年与统计融合的趣味展示。
+        与多智能体控制台（MAFB）解耦；「个性化 TOP5」为八字五行流年与统计融合的趣味展示，不构成投资建议。
       </Typography.Paragraph>
-      <PageCard title="一键生成">
-        <Button type="primary" icon={<BulbOutlined />} loading={aiLoading} onClick={() => void runAi()}>
-          一键 AI 选股
-        </Button>
+      <PageCard title="一键生成（娱乐向）">
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Button type="primary" icon={<BulbOutlined />} loading={aiLoading} onClick={() => void runAi()}>
+            一键 AI 娱乐选基
+          </Button>
+          {aiLoading && aiStage ? <Typography.Text type="secondary">{aiStage}</Typography.Text> : null}
+        </Space>
         {ai && (
           <Card size="small" style={{ marginTop: 16 }} title="说明与结果">
             <Typography.Paragraph>{ai.reason}</Typography.Paragraph>
@@ -127,7 +137,7 @@ export default function AiFundPickPage() {
           </Card>
         )}
       </PageCard>
-      <Link to="/fbti-result">查看 FBTI 人格详情</Link>
+      <Link to="/user-community#fbti">查看 FBTI 人格详情（用户与社区）</Link>
     </div>
   );
 }

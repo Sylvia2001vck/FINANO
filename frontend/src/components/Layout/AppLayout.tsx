@@ -1,12 +1,9 @@
 import {
   BarChartOutlined,
-  BulbOutlined,
   ClusterOutlined,
+  ContactsOutlined,
   FileTextOutlined,
   LoginOutlined,
-  TeamOutlined,
-  UserOutlined,
-  ExperimentOutlined,
   ThunderboltOutlined
 } from "@ant-design/icons";
 import { ConfigProvider, Layout, Menu, Typography, Button, Space } from "antd";
@@ -90,18 +87,18 @@ export function AppLayout({ children }: Props) {
             theme="dark"
             style={{ background: "transparent", borderInlineEnd: "none" }}
             selectedKeys={[
-              ["/fbti-test", "/fbti-result"].includes(location.pathname) ? "/fbti-result" : location.pathname
+              ["/user-community", "/profile", "/community", "/fbti-result", "/fbti-test"].includes(
+                location.pathname
+              )
+                ? "/user-community"
+                : location.pathname
             ]}
             items={[
               { key: "/", icon: <BarChartOutlined />, label: "仪表盘" },
-              { key: "/trade", icon: <FileTextOutlined />, label: "交易记录" },
-              { key: "/note", icon: <FileTextOutlined />, label: "投资笔记" },
-              { key: "/ai", icon: <BulbOutlined />, label: "AI 分析" },
+              { key: "/trade", icon: <FileTextOutlined />, label: "交易与复盘" },
               { key: "/mafb", icon: <ClusterOutlined />, label: "多智能体控制台" },
-              { key: "/fbti-result", icon: <ExperimentOutlined />, label: "FBTI 画像" },
-              { key: "/ai-fund-pick", icon: <ThunderboltOutlined />, label: "AI 选股" },
-              { key: "/profile", icon: <UserOutlined />, label: "用户档案" },
-              { key: "/community", icon: <TeamOutlined />, label: "社区" }
+              { key: "/ai-fund-pick", icon: <ThunderboltOutlined />, label: "AI娱乐选基" },
+              { key: "/user-community", icon: <ContactsOutlined />, label: "用户与社区" }
             ]}
             onClick={({ key }) => navigate(key)}
           />

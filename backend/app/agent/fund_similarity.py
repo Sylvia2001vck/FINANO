@@ -1,5 +1,9 @@
 """
-K 线 / 净值序列相似度：近 N 日日收益率对齐后，余弦相似度或轻量 DTW（纯 NumPy，无 scipy/fastdtw 依赖）。
+K 线 / 净值序列相似度。
+
+- cosine / dtw：与历史行为一致（全候选逐只算一种度量）。
+- tiered（默认 API）：目标时间轴上对齐日收益 → PAA 降维 → L2 归一后 Faiss 内积粗排（≈余弦）
+  → 仅对 Top-M 候选做 Sakoe-Chiba 带窗 DTW 精排，兼顾滞后形态与耗时。
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ from datetime import date, timedelta
 from typing import Any, Literal
 
 import numpy as np
+import pandas as pd
 
 from app.agent.fund_catalog import list_funds_catalog_only
 from app.core.config import settings
@@ -19,7 +24,15 @@ from app.services.similar_funds import similar_funds
 
 logger = logging.getLogger(__name__)
 
-Method = Literal["cosine", "dtw"]
+try:
+    import faiss  # type: ignore
+
+    _FAISS_AVAILABLE = True
+except Exception:  # pragma: no cover - optional in odd envs
+    faiss = None
+    _FAISS_AVAILABLE = False
+
+Method = Literal["cosine", "dtw", "tiered"]
 
 
 def _returns_by_date(history: list[dict[str, Any]]) -> dict[str, float]:
@@ -62,6 +75,27 @@ def _dtw_distance(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.sqrt(dtw[n, m]))
 
 
+def _dtw_distance_sakoe_chiba(a: np.ndarray, b: np.ndarray, band_ratio: float) -> float:
+    """Sakoe-Chiba 带窗 DTW，降低滞后对齐时的计算量。"""
+    n, m = len(a), len(b)
+    if n == 0 or m == 0:
+        return float("inf")
+    w = max(3, int(float(band_ratio) * max(n, m)))
+    inf = float("inf")
+    dtw = np.full((n + 1, m + 1), inf)
+    dtw[0, 0] = 0.0
+    for i in range(1, n + 1):
+        j0 = max(1, i - w)
+        j1 = min(m, i + w)
+        for j in range(j0, j1 + 1):
+            cost = (a[i - 1] - b[j - 1]) ** 2
+            dtw[i, j] = cost + min(dtw[i - 1, j], dtw[i, j - 1], dtw[i - 1, j - 1])
+    d = float(dtw[n, m])
+    if not np.isfinite(d) or d == inf:
+        return _dtw_distance(a, b)
+    return float(np.sqrt(d))
+
+
 def similarity_dtw(a: np.ndarray, b: np.ndarray) -> float:
     """DTW 距离转相似度 (0,1]，越大越相似。"""
     za, zb = _zscore(a), _zscore(b)
@@ -69,10 +103,71 @@ def similarity_dtw(a: np.ndarray, b: np.ndarray) -> float:
     return float(1.0 / (1.0 + d))
 
 
+def similarity_dtw_banded(a: np.ndarray, b: np.ndarray, band_ratio: float | None = None) -> float:
+    br = float(band_ratio if band_ratio is not None else settings.mafb_kline_dtw_band_ratio)
+    za, zb = _zscore(a), _zscore(b)
+    d = _dtw_distance_sakoe_chiba(za, zb, br)
+    return float(1.0 / (1.0 + d))
+
+
+def _paa(x: np.ndarray, n_segments: int) -> np.ndarray:
+    """分段聚合近似（PAA）：将序列压成固定长度均值向量。"""
+    x = np.asarray(x, dtype=float).ravel()
+    n = int(x.size)
+    m = max(2, int(n_segments))
+    if n == 0:
+        return np.zeros(m, dtype=float)
+    edges = np.linspace(0, n, m + 1, dtype=int)
+    out = np.empty(m, dtype=float)
+    for i in range(m):
+        lo, hi = int(edges[i]), int(edges[i + 1])
+        seg = x[lo:hi]
+        out[i] = float(np.mean(seg)) if seg.size else 0.0
+    return out
+
+
+def _series_on_master_dates(peer_map: dict[str, float], master_dates: list[str]) -> np.ndarray:
+    """按目标基金的日期轴对齐：缺失日收益前向填充，首尾再用反向填充，仍缺则 0。"""
+    raw = [float(peer_map[d]) if d in peer_map else np.nan for d in master_dates]
+    s = pd.Series(raw, dtype="float64").ffill().bfill().fillna(0.0)
+    return s.to_numpy(dtype=float)
+
+
+def _coarse_paa_normalized(vec: np.ndarray, paa_bins: int) -> np.ndarray:
+    z = _zscore(vec)
+    p = _paa(z, paa_bins)
+    p = np.nan_to_num(p.astype(float))
+    nrm = np.linalg.norm(p) + 1e-9
+    return (p / nrm).astype(np.float32)
+
+
+def _faiss_topk_ip(
+    query: np.ndarray, corpus: np.ndarray, k: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    corpus: (N, D) float32, 行已 L2 归一；query: (D,) 已归一。
+    返回 (scores, indices) 长度 min(k,N)，scores 为内积≈余弦。
+    """
+    n = int(corpus.shape[0])
+    if n == 0:
+        return np.array([], dtype=np.float32), np.array([], dtype=np.int64)
+    kk = max(1, min(int(k), n))
+    q = query.reshape(1, -1).astype(np.float32, copy=False)
+    if _FAISS_AVAILABLE and faiss is not None:
+        d = int(corpus.shape[1])
+        index = faiss.IndexFlatIP(d)
+        index.add(corpus.astype(np.float32, copy=False))
+        scores, idx = index.search(q, kk)
+        return scores[0][:kk].astype(np.float32), idx[0][:kk].astype(np.int64)
+    sims = corpus @ query.astype(np.float32)
+    idx = np.argsort(-sims)[:kk]
+    return sims[idx].astype(np.float32), idx.astype(np.int64)
+
+
 def calc_series_similarity(
     a: np.ndarray,
     b: np.ndarray,
-    method: Method = "cosine",
+    method: Literal["cosine", "dtw"] = "cosine",
 ) -> float:
     if method == "dtw":
         return similarity_dtw(a, b)
@@ -181,21 +276,124 @@ def _pool_from_feature_then_random(
     return out[:max_n]
 
 
+def _tiered_similarity_rows(
+    code: str,
+    pool: list[dict[str, Any]],
+    tgt_map: dict[str, float],
+    tgt_synth: bool,
+    days: int,
+    top_n: int,
+    nav_timeout: float,
+    paa_bins: int,
+    fine_pool: int,
+) -> list[dict[str, Any]]:
+    master_dates = sorted(tgt_map.keys())
+    if len(master_dates) < 10:
+        return []
+    tgt_master = np.array([tgt_map[d] for d in master_dates], dtype=float)
+    tgt_c = _coarse_paa_normalized(tgt_master, paa_bins)
+
+    cand: list[dict[str, Any]] = []
+    for row in pool:
+        oc = str(row["code"])
+        oh = fetch_fund_nav_history(oc, days=days, timeout=nav_timeout)
+        omap = _returns_by_date(oh)
+        peer_synth = False
+        if len(omap) < 10:
+            oh = _synthetic_nav_history(oc, max(days, 60))
+            omap = _returns_by_date(oh)
+            peer_synth = True
+        peer_vec = _series_on_master_dates(omap, master_dates)
+        if peer_vec.shape[0] != tgt_master.shape[0]:
+            continue
+        try:
+            coarse_v = _coarse_paa_normalized(peer_vec, paa_bins)
+            coarse_sim = float(np.dot(coarse_v.astype(float), tgt_c.astype(float)))
+        except Exception:
+            logger.debug("coarse paa failed: %s vs %s", code, oc, exc_info=True)
+            continue
+        cand.append(
+            {
+                "row": row,
+                "code": oc,
+                "peer_vec": peer_vec,
+                "peer_synth": peer_synth,
+                "coarse_sim": coarse_sim,
+                "coarse_v": coarse_v,
+            }
+        )
+
+    if not cand:
+        return []
+
+    feats = np.stack([c["coarse_v"] for c in cand], axis=0)
+    m_take = max(1, min(int(fine_pool), len(cand)))
+    _, top_idx = _faiss_topk_ip(tgt_c, feats, m_take)
+
+    dtw_rows: list[tuple[float, dict[str, Any]]] = []
+    for ii in top_idx.tolist():
+        i = int(ii)
+        if i < 0 or i >= len(cand):
+            continue
+        item = cand[i]
+        oc = item["code"]
+        row = item["row"]
+        peer_vec = item["peer_vec"]
+        peer_synth = item["peer_synth"]
+        coarse_sim = float(item["coarse_sim"])
+        try:
+            fine_sim = similarity_dtw_banded(tgt_master, peer_vec, settings.mafb_kline_dtw_band_ratio)
+        except Exception:
+            logger.debug("banded dtw failed: %s vs %s", code, oc, exc_info=True)
+            fine_sim = float(max(0.0, min(1.0, (coarse_sim + 1) / 2)))
+
+        src_note = ""
+        if tgt_synth or peer_synth:
+            src_note = "（部分净值序列为演示合成，用于算法对齐演示）"
+        rationale = (
+            f"近 {days} 日：PAA({paa_bins}) 降维 + {'Faiss IP' if _FAISS_AVAILABLE else '归一向量内积'}粗排，"
+            f"再对粗排前 {m_take} 只做带窗 DTW 精排（历史形态，非预测）{src_note}"
+        )
+        dtw_rows.append(
+            (
+                fine_sim,
+                {
+                    "code": oc,
+                    "name": row.get("name", ""),
+                    "track": row.get("track", ""),
+                    "similarity": round(float(fine_sim), 4),
+                    "coarse_similarity": round(float(coarse_sim), 4),
+                    "method": "tiered",
+                    "pipeline": "paa_ip_dtw_band",
+                    "window_days": days,
+                    "aligned_points": int(len(tgt_master)),
+                    "nav_series": "synthetic" if (tgt_synth or peer_synth) else "live",
+                    "rationale": rationale,
+                },
+            )
+        )
+
+    dtw_rows.sort(key=lambda x: x[0], reverse=True)
+    return [x[1] for x in dtw_rows[:top_n]]
+
+
 def find_similar_kline_funds(
     target_code: str,
     top_n: int = 5,
     days: int = 60,
-    method: Method = "cosine",
+    method: Method = "tiered",
     *,
     max_nav_fetches: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     在基金目录内（除目标外）比较近 N 日对齐日收益率序列，返回相似度最高的 top_n。
     目录很大时先用统计特征相似预筛候选，再拉净值，避免数百次顺序 lsjz 请求。
-    任一步失败则跳过该基金；目标无历史则返回 []。
+    tiered：PAA 粗排 + Faiss 内积 + 带窗 DTW 精排（仅精排子集）。
     """
     cap = int(max_nav_fetches or settings.mafb_kline_similar_max_nav_fetches)
     cap = max(16, min(cap, 400))
+    paa_bins = int(settings.mafb_kline_paa_bins)
+    fine_pool = int(settings.mafb_kline_fine_pool)
 
     code = target_code.strip()
     nav_timeout = 8.0
@@ -215,7 +413,13 @@ def find_similar_kline_funds(
     if len(pool) < 8:
         pool = _peer_pool(catalog, code, track or "宽基", min(cap, 48))
 
+    if method == "tiered":
+        return _tiered_similarity_rows(
+            code, pool, tgt_map, tgt_synth, days, top_n, nav_timeout, paa_bins, fine_pool
+        )
+
     scored: list[tuple[float, str, dict[str, Any]]] = []
+    m: Literal["cosine", "dtw"] = "dtw" if method == "dtw" else "cosine"
     for row in pool:
         oc = str(row["code"])
         oh = fetch_fund_nav_history(oc, days=days, timeout=nav_timeout)
@@ -230,7 +434,7 @@ def find_similar_kline_funds(
             continue
         va, vb = aligned
         try:
-            sim = calc_series_similarity(va, vb, method=method)
+            sim = calc_series_similarity(va, vb, method=m)
         except Exception:
             logger.debug("similarity calc failed: %s vs %s", code, oc, exc_info=True)
             continue
@@ -246,12 +450,12 @@ def find_similar_kline_funds(
                     "name": row.get("name", ""),
                     "track": row.get("track", ""),
                     "similarity": round(float(sim), 4),
-                    "method": method,
+                    "method": m,
                     "window_days": days,
                     "aligned_points": int(len(va)),
                     "nav_series": "synthetic" if (tgt_synth or peer_synth) else "live",
                     "rationale": (
-                        f"近 {days} 个交易日对齐日收益率序列的{('余弦' if method == 'cosine' else 'DTW')}相似度"
+                        f"近 {days} 个交易日对齐日收益率序列的{('余弦' if m == 'cosine' else 'DTW')}相似度"
                         f"（演示用，历史不代表未来）{src_note}"
                     ),
                 },

@@ -23,7 +23,7 @@ from app.db.session import get_db
 from app.modules.agent.schemas import AgentProfileSave, MAFBRunRequest
 from app.modules.user.models import User
 from app.modules.user.service import update_investor_profile
-from app.services.ai_fund_selector import run_fbti_ai_selection
+from app.services.ai_fund_selector import iter_fbti_ai_selection_sse_events, run_fbti_ai_selection
 from app.services.user_agent_fund_pool import add_to_pool, list_pool_funds, remove_from_pool
 from app.services.fbti_engine import match_archetype
 
@@ -350,11 +350,17 @@ def list_kline_similar_funds(
     code: str = Query(..., min_length=6, max_length=6, description="6 位基金/ETF 代码"),
     days: int = Query(60, ge=20, le=200),
     top_k: int = Query(10, ge=1, le=20),
-    method: str = Query("cosine", description="cosine | dtw"),
+    method: str = Query("tiered", description="tiered（推荐 PAA+Faiss 粗排 + 带窗 DTW 精排）| cosine | dtw"),
     _user=Depends(get_current_user),
 ):
-    """近 N 日对齐日收益率序列：余弦相似度或 DTW（东方财富历史净值）。"""
-    m = "dtw" if method.lower().strip() == "dtw" else "cosine"
+    """近 N 日日收益率：tiered 为粗筛+精排；cosine/dtw 为全量单算法（兼容）。"""
+    raw = method.lower().strip()
+    if raw == "dtw":
+        m = "dtw"
+    elif raw == "cosine":
+        m = "cosine"
+    else:
+        m = "tiered"
     rows = find_similar_kline_funds(code.strip(), top_n=top_k, days=days, method=m)
     return success_response(
         data={"reference_code": code.strip(), "days": days, "method": m, "similar": rows},
@@ -368,6 +374,46 @@ class FbtiSelectBody(BaseModel):
     wuxing: str | None = None
 
 
+def _fbti_time_label() -> str:
+    if _BJ:
+        return datetime.now(_BJ).strftime("%Y-%m-%d %H:%M 北京时间")
+    return datetime.now().strftime("%Y-%m-%d %H:%M 本地时间")
+
+
+def _enrich_fbti_result_with_personalized(user: User, result: dict) -> dict:
+    """在 reason+funds 上追加 personalized_top5（与同步接口一致）。"""
+    out = dict(result)
+    bd = user.birth_date.isoformat() if user.birth_date else "1990-01-01"
+    mt = (user.mbti or "INTJ").upper()
+    prof_ent = build_user_profile(bd, mt, None, user.risk_preference)
+    anchor_code = ""
+    funds = out.get("funds") or []
+    if funds:
+        anchor_code = str(funds[0].get("code") or "").strip()
+    anchor = get_fund_by_code(anchor_code) if anchor_code else get_fund_by_code("510300")
+    if not anchor:
+        anchor = {}
+    out["personalized_top5"] = build_top5_personalized_entertainment(prof_ent, anchor)
+    return out
+
+
+def _fbti_select_context(
+    payload: FbtiSelectBody,
+    current_user: User,
+    db: Session,
+) -> tuple[User, dict, str, str]:
+    """校验用户与 FBTI，返回 (user, arch, wuxing, time_label)。"""
+    user = db.get(User, current_user.id)
+    if not user:
+        raise APIException(code=10001, status_code=404)
+    code = (payload.fbti_code or user.fbti_profile) or ""
+    if not code:
+        raise APIException(code=40002, message="请先完成 FBTI 测试 POST /api/v1/user/fbti/test", status_code=400)
+    arch = match_archetype(code)
+    wx = (payload.wuxing or user.user_wuxing) or str(arch.get("wuxing") or "")
+    return user, arch, wx, _fbti_time_label()
+
+
 @router.post("/ai/fbti-select")
 def fbti_ai_select_funds(
     payload: FbtiSelectBody = FbtiSelectBody(),
@@ -378,19 +424,7 @@ def fbti_ai_select_funds(
     FBTI + 五行娱乐融合：偏好 JSON → 随机样本 → 规则 Top20 → 模型终筛至多 5 只；
     另附「个性化 TOP5」（五行/流年/统计）仅供趣味展示，与 MAFB 专业流水线解耦。
     """
-    user = db.get(User, current_user.id)
-    if not user:
-        raise APIException(code=10001, status_code=404)
-    code = (payload.fbti_code or user.fbti_profile) or ""
-    if not code:
-        raise APIException(code=40002, message="请先完成 FBTI 测试 POST /api/v1/user/fbti/test", status_code=400)
-    arch = match_archetype(code)
-    wx = (payload.wuxing or user.user_wuxing) or str(arch.get("wuxing") or "")
-    if _BJ:
-        now = datetime.now(_BJ)
-        time_label = now.strftime("%Y-%m-%d %H:%M 北京时间")
-    else:
-        time_label = datetime.now().strftime("%Y-%m-%d %H:%M 本地时间")
+    user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
     result = dict(
         run_fbti_ai_selection(
             fbti_code=str(arch.get("matched_code", arch["code"])),
@@ -400,15 +434,44 @@ def fbti_ai_select_funds(
             arch=arch,
         )
     )
-    bd = user.birth_date.isoformat() if user.birth_date else "1990-01-01"
-    mt = (user.mbti or "INTJ").upper()
-    prof_ent = build_user_profile(bd, mt, None, user.risk_preference)
-    anchor_code = ""
-    funds = result.get("funds") or []
-    if funds:
-        anchor_code = str(funds[0].get("code") or "").strip()
-    anchor = get_fund_by_code(anchor_code) if anchor_code else get_fund_by_code("510300")
-    if not anchor:
-        anchor = {}
-    result["personalized_top5"] = build_top5_personalized_entertainment(prof_ent, anchor)
+    result = _enrich_fbti_result_with_personalized(user, result)
     return success_response(data=result, message="FBTI AI 选股完成")
+
+
+@router.post("/ai/fbti-select/stream")
+def fbti_ai_select_funds_stream(
+    payload: FbtiSelectBody = FbtiSelectBody(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """SSE：阶段提示 + 最终结果（data 与 POST /ai/fbti-select 的 data 结构一致）。"""
+    user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
+    fbti_code = str(arch.get("matched_code", arch["code"]))
+    fbti_name = str(arch["name"])
+
+    def event_gen():
+        try:
+            for ev in iter_fbti_ai_selection_sse_events(
+                fbti_code=fbti_code,
+                fbti_name=fbti_name,
+                wuxing=wx,
+                time_label=time_label,
+                arch=arch,
+            ):
+                if ev.get("event") == "result" and isinstance(ev.get("data"), dict):
+                    full = _enrich_fbti_result_with_personalized(user, ev["data"])
+                    yield f"data: {json.dumps({'event': 'result', 'data': full}, ensure_ascii=False, default=str)}\n\n"
+                else:
+                    yield f"data: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
+        except Exception as e:  # noqa: BLE001
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

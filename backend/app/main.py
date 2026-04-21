@@ -2,16 +2,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.responses import success_response
 from app.db.base import Base
 from app.db.legacy_cleanup import drop_legacy_comments_table
+from app.db.trade_columns import ensure_trade_lifecycle_columns
 from app.db.session import SessionLocal, engine
 from app.modules.agent.router import router as mafb_router
 from app.modules.ai.router import router as ai_router
 from app.modules.community.router import router as community_router
+from app.modules.fund_nav.router import router as fund_nav_router
 from app.modules.hot.router import router as hot_router
 from app.modules.hot.service import bootstrap_hot_news
 from app.modules.note.router import router as note_router
@@ -31,6 +34,7 @@ from app.modules.user import models as _user_models  # noqa: F401
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_trade_lifecycle_columns(engine)
     drop_legacy_comments_table(engine)
     db = SessionLocal()
     try:
@@ -56,6 +60,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# 大 JSON（净值列表）gzip 后显著减小体积；Protobuf 可作为后续二进制协议再加
+app.add_middleware(GZipMiddleware, minimum_size=800)
 register_exception_handlers(app)
 
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
@@ -68,6 +74,7 @@ app.include_router(mafb_router, prefix=settings.api_v1_prefix)
 app.include_router(ocr_router, prefix=settings.api_v1_prefix)
 app.include_router(hot_router, prefix=settings.api_v1_prefix)
 app.include_router(community_router, prefix=settings.api_v1_prefix)
+app.include_router(fund_nav_router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/")

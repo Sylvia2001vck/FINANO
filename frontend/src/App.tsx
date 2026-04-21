@@ -2,17 +2,18 @@ import { App as AntdApp, Spin } from "antd";
 import { ReactNode, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/Layout/AppLayout";
-import AIPage from "./pages/AI";
 import MAFBPage from "./pages/MAFB";
 import ProfilePage from "./pages/Profile";
 import CommunityPage from "./pages/Community";
 import DashboardPage from "./pages/Dashboard";
 import LoginPage from "./pages/Login";
-import NotePage from "./pages/Note";
 import TradePage from "./pages/Trade";
+import NotePage from "./pages/Note";
+import AIPage from "./pages/AI";
 import FbtiTestPage from "./pages/FbtiTest";
 import FbtiResultPage from "./pages/FbtiResult";
 import AiFundPickPage from "./pages/AiFundPick";
+import UserCommunityPage from "./pages/UserCommunity";
 import { postWarmFundCatalog } from "./services/agent";
 import { fetchMe } from "./services/user";
 import { useAppStore } from "./store/appStore";
@@ -60,12 +61,14 @@ export default function App() {
         <Route path="/ai" element={<ProtectedLayout><AIPage /></ProtectedLayout>} />
         <Route path="/similar-funds" element={<Navigate to="/mafb" replace />} />
         <Route path="/mafb" element={<ProtectedLayout><MAFBPage /></ProtectedLayout>} />
-        <Route path="/fbti" element={<Navigate to="/fbti-result" replace />} />
+        <Route path="/fbti" element={<Navigate to="/user-community#fbti" replace />} />
         <Route path="/fbti-test" element={<ProtectedLayout><FbtiTestPage /></ProtectedLayout>} />
         <Route path="/fbti-result" element={<ProtectedLayout><FbtiResultPage /></ProtectedLayout>} />
         <Route path="/ai-fund-pick" element={<ProtectedLayout><AiFundPickPage /></ProtectedLayout>} />
+        <Route path="/fund-nav" element={<Navigate to="/mafb" replace />} />
         <Route path="/profile" element={<ProtectedLayout><ProfilePage /></ProtectedLayout>} />
         <Route path="/community" element={<ProtectedLayout><CommunityPage /></ProtectedLayout>} />
+        <Route path="/user-community" element={<ProtectedLayout><UserCommunityPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to={token ? "/" : "/login"} replace />} />
       </Routes>
     </AntdApp>

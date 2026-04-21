@@ -407,6 +407,57 @@ def select_funds_with_ai(
     }
 
 
+def iter_fbti_ai_selection_sse_events(
+    *,
+    fbti_code: str,
+    fbti_name: str,
+    wuxing: str,
+    time_label: str,
+    arch: dict[str, Any],
+):
+    """同步生成器：依次 yield 阶段 dict，最后 yield 与 run_fbti_ai_selection 相同结构的 result dict。"""
+    yield {"event": "stage", "node": "prefs", "label": "归纳选股偏好（大模型）…"}
+    prefs, why_pref = infer_selection_preferences_with_ai(
+        fbti_code=fbti_code,
+        fbti_name=fbti_name,
+        wuxing=wuxing,
+        time_label=time_label,
+        arch=arch,
+    )
+    if why_pref != "ok":
+        logger.info("FBTI 偏好阶段未取到模型 JSON，已用人格默认规则 (why=%s)", why_pref)
+
+    yield {"event": "stage", "node": "pool", "label": "随机抽样与规则 Top20…"}
+    top20, pool_size, _seed = _sample_and_rank_top_pool(prefs, wuxing)
+    prefix = (
+        f"全库约 {pool_size} 只中随机抽至多 {_FBTI_SAMPLE_POOL} 只，按偏好规则保留 Top{_FBTI_RANK_TOP}；"
+        f"再由模型终筛。"
+    )
+    if not top20:
+        yield {
+            "event": "result",
+            "data": {"reason": f"{prefix} 基金目录为空，无法选股。".strip(), "funds": []},
+        }
+        return
+
+    yield {"event": "stage", "node": "quotes", "label": "合并估值数据（若开启）…"}
+    top20 = _merge_live_quotes_if_applicable(top20)
+    yield {"event": "stage", "node": "llm", "label": "大模型终筛至多 5 只…"}
+    summary = str(prefs.get("summary") or "")
+    result = select_funds_with_ai(
+        fbti_code=fbti_code,
+        fbti_name=fbti_name,
+        wuxing=wuxing,
+        time_label=time_label,
+        fund_snapshot=top20,
+        rules_summary=summary,
+        compact_user_reason=True,
+    )
+    base_reason = str(result.get("reason") or "").strip()
+    result["reason"] = f"{prefix} {base_reason}".strip()
+    yield {"event": "result", "data": result}
+
+
 def run_fbti_ai_selection(
     *,
     fbti_code: str,
@@ -419,42 +470,17 @@ def run_fbti_ai_selection(
     对外入口：偏好 LLM → 随机 400 → 规则 Top20 → 选股 LLM Top5。
     返回与原先 select_funds_with_ai 相同结构：{ reason, funds }。
     """
-    prefs, why_pref = infer_selection_preferences_with_ai(
+    last: dict[str, Any] | None = None
+    for ev in iter_fbti_ai_selection_sse_events(
         fbti_code=fbti_code,
         fbti_name=fbti_name,
         wuxing=wuxing,
         time_label=time_label,
         arch=arch,
-    )
-    if why_pref != "ok":
-        logger.info("FBTI 偏好阶段未取到模型 JSON，已用人格默认规则 (why=%s)", why_pref)
-
-    top20, pool_size, _seed = _sample_and_rank_top_pool(prefs, wuxing)
-    prefix = (
-        f"全库约 {pool_size} 只中随机抽至多 {_FBTI_SAMPLE_POOL} 只，按偏好规则保留 Top{_FBTI_RANK_TOP}；"
-        f"再由模型终筛。"
-    )
-    if not top20:
-        return {
-            "reason": f"{prefix} 基金目录为空，无法选股。".strip(),
-            "funds": [],
-        }
-
-    top20 = _merge_live_quotes_if_applicable(top20)
-    summary = str(prefs.get("summary") or "")
-    result = select_funds_with_ai(
-        fbti_code=fbti_code,
-        fbti_name=fbti_name,
-        wuxing=wuxing,
-        time_label=time_label,
-        fund_snapshot=top20,
-        rules_summary=summary,
-        compact_user_reason=True,
-    )
-    base_reason = str(result.get("reason") or "").strip()
-    # 成功时模型已写 reason，仅加短前缀；失败时前缀与 compact 说明合并为一段即可。
-    result["reason"] = f"{prefix} {base_reason}".strip()
-    return result
+    ):
+        if isinstance(ev, dict) and ev.get("event") == "result" and isinstance(ev.get("data"), dict):
+            last = ev["data"]
+    return last if last is not None else {"reason": "选股流程未返回结果", "funds": []}
 
 
 def build_fund_snapshot_for_fbti() -> list[dict[str, Any]]:

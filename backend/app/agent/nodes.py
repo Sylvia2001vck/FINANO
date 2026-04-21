@@ -223,15 +223,16 @@ def node_risk(state: MAFBState) -> dict[str, Any]:
 
 
 def node_kline_similar(state: MAFBState) -> dict[str, Any]:
-    """K 线 / 净值序列相似：与池内其他基金对齐日收益率，余弦或 DTW。"""
+    """K 线 / 净值序列相似：PAA+粗排+带窗 DTW 精排（tiered）。"""
     code = (state.get("fund_code") or "510300").strip()
     days = 80
     try:
-        rows = find_similar_kline_funds(code, top_n=5, days=days, method="cosine")
+        rows = find_similar_kline_funds(code, top_n=5, days=days, method="tiered")
     except Exception:
         rows = []
     reason = (
-        f"K线相似基金：近 {days} 个交易日对齐日收益率的余弦相似度，与目录内基金比较（历史形态，非预测）。"
+        f"K线相似基金：近 {days} 日 PAA 粗排 + 带窗 DTW 精排（tiered），"
+        f"与目录内基金比较（历史形态，非预测）。"
     )
     return {
         "kline_similar_funds": rows,

@@ -45,12 +45,22 @@ export interface NoteItem {
 }
 
 export interface HotNewsItem {
-  id: number;
+  id?: number | null;
+  news_id: string;
+  rank: number;
   title: string;
   summary: string;
   source: string;
+  batch_time: string;
   publish_time: string;
+  sentiment_score?: number | null;
   created_at: string;
+}
+
+export interface HotNewsSnapshot {
+  items: HotNewsItem[];
+  batch_time: string;
+  updated_at: string;
 }
 
 export interface PostItem {

@@ -16,7 +16,7 @@ from app.modules.ai.router import router as ai_router
 from app.modules.community.router import router as community_router
 from app.modules.fund_nav.router import router as fund_nav_router
 from app.modules.hot.router import router as hot_router
-from app.modules.hot.service import bootstrap_hot_news
+from app.modules.hot.service import bootstrap_hot_news, start_hot_scheduler
 from app.modules.note.router import router as note_router
 from app.modules.ocr.router import router as ocr_router
 from app.modules.trade.router import router as trade_router
@@ -41,7 +41,12 @@ async def lifespan(_: FastAPI):
         bootstrap_hot_news(db)
     finally:
         db.close()
+    stop_event, scheduler_thread = start_hot_scheduler(SessionLocal)
     yield
+    if stop_event is not None:
+        stop_event.set()
+    if scheduler_thread is not None:
+        scheduler_thread.join(timeout=2.0)
 
 
 app = FastAPI(

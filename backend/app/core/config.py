@@ -99,6 +99,11 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="", alias="REDIS_URL")
     redis_cache_prefix: str = Field(default="finano", alias="REDIS_CACHE_PREFIX")
     redis_socket_timeout_sec: float = Field(default=1.2, ge=0.2, le=10.0, alias="REDIS_SOCKET_TIMEOUT_SEC")
+    # 热点聚合：服务端定时批处理 + 客户端读缓存
+    hot_scheduler_enabled: bool = Field(default=True, alias="HOT_SCHEDULER_ENABLED")
+    hot_refresh_interval_sec: int = Field(default=3600, ge=300, le=86400, alias="HOT_REFRESH_INTERVAL_SEC")
+    hot_top_n: int = Field(default=10, ge=3, le=30, alias="HOT_TOP_N")
+    hot_cache_ttl_sec: int = Field(default=3900, ge=60, le=172800, alias="HOT_CACHE_TTL_SEC")
 
     @property
     def cors_origins(self) -> List[str]:

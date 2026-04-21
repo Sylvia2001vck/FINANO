@@ -1,5 +1,5 @@
 import { api, ApiEnvelope } from "./api";
-import { AiAnalysisResult, HotNewsItem, NoteItem, PostItem, Trade, TradeStats } from "../types/trade";
+import { AiAnalysisResult, HotNewsSnapshot, NoteItem, PostItem, Trade, TradeStats } from "../types/trade";
 
 export async function fetchTrades() {
   const response = await api.get<ApiEnvelope<Trade[]>>("/trades");
@@ -66,7 +66,7 @@ export async function analyzeTrade(tradeId: number) {
 }
 
 export async function fetchHotNews() {
-  const response = await api.get<ApiEnvelope<HotNewsItem[]>>("/hot");
+  const response = await api.get<ApiEnvelope<HotNewsSnapshot>>("/hot");
   return response.data.data;
 }
 

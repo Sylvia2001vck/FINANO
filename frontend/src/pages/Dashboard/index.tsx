@@ -10,12 +10,14 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<TradeStats | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [hotNews, setHotNews] = useState<HotNewsItem[]>([]);
+  const [hotUpdatedAt, setHotUpdatedAt] = useState<string>("");
 
   useEffect(() => {
     void Promise.all([fetchTradeStats(), fetchTrades(), fetchHotNews()]).then(([tradeStats, tradeItems, news]) => {
       setStats(tradeStats);
       setTrades(tradeItems);
-      setHotNews(news);
+      setHotNews(news.items || []);
+      setHotUpdatedAt(news.updated_at || "");
     });
   }, []);
 
@@ -39,12 +41,12 @@ export default function DashboardPage() {
       <PageCard title="收益曲线">
         <ProfitTrendChart trades={trades} />
       </PageCard>
-      <PageCard title="金融热点">
+      <PageCard title={`金融热点${hotUpdatedAt ? `（更新于：${hotUpdatedAt.slice(0, 16).replace("T", " ")}` : ""}`}>
         <List
           dataSource={hotNews}
           renderItem={(item) => (
             <List.Item>
-              <List.Item.Meta title={item.title} description={`${item.summary} 来源：${item.source}`} />
+              <List.Item.Meta title={`${item.rank}. ${item.title}`} description={`${item.summary} 来源：${item.source}`} />
             </List.Item>
           )}
         />

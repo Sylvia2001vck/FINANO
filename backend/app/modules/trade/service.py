@@ -148,6 +148,12 @@ def create_trade(db: Session, user_id: int, payload: TradeCreate) -> Trade:
     return trade
 
 
+def delete_trade(db: Session, user_id: int, trade_id: int) -> None:
+    trade = get_user_trade(db, user_id, trade_id)
+    db.delete(trade)
+    db.commit()
+
+
 def create_trades(db: Session, user_id: int, trades: list[dict]) -> list[Trade]:
     created = []
     for item in trades:

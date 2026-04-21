@@ -19,6 +19,11 @@ export async function createTrade(payload: TradeCreatePayload) {
   return response.data.data;
 }
 
+export async function deleteTrade(tradeId: number) {
+  const response = await api.delete<ApiEnvelope<{ id: number }>>(`/trades/${tradeId}`);
+  return response.data.data;
+}
+
 export async function searchTradeSecurities(q: string, limit = 40) {
   const qs = new URLSearchParams({ q, limit: String(limit) });
   const response = await api.get<ApiEnvelope<{ items: SecuritySearchHit[]; total: number }>>(

@@ -7,7 +7,7 @@ from app.core.responses import success_response
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.modules.trade.schemas import TradeCreate, TradeRead
-from app.modules.trade.service import create_trade, create_trades, list_user_trades, summarize_trades
+from app.modules.trade.service import create_trade, create_trades, delete_trade, list_user_trades, summarize_trades
 from app.services.ocr import recognize_statement
 
 
@@ -49,6 +49,12 @@ def get_trades(current_user=Depends(get_current_user), db: Session = Depends(get
 def add_trade(payload: TradeCreate, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     trade = create_trade(db, current_user.id, payload)
     return success_response(data=TradeRead.model_validate(trade).model_dump(), message="交易记录创建成功")
+
+
+@router.delete("/{trade_id}")
+def remove_trade(trade_id: int, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    delete_trade(db, current_user.id, trade_id)
+    return success_response(data={"id": trade_id}, message="交易记录已删除")
 
 
 @router.post("/import/ocr")

@@ -1,4 +1,4 @@
-import { BookOutlined, BulbOutlined, UploadOutlined } from "@ant-design/icons";
+import { BookOutlined, BulbOutlined, DeleteOutlined, UploadOutlined } from "@ant-design/icons";
 import {
   Button,
   Card,
@@ -11,6 +11,7 @@ import {
   InputNumber,
   List,
   Modal,
+  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -29,6 +30,7 @@ import { PageCard } from "../../components/UI/PageCard";
 import {
   analyzeTrade,
   createNote,
+  deleteTrade,
   createTrade,
   fetchNotes,
   fetchTradeStats,
@@ -234,7 +236,32 @@ export default function TradePage() {
             { title: "方向", dataIndex: "direction", width: 72 },
             { title: "买入额", dataIndex: "amount", width: 100, render: (v: number) => currency(v) },
             { title: "盈亏", dataIndex: "profit", width: 100, render: (v: number) => currency(v) },
-            { title: "平台", dataIndex: "platform", width: 96, ellipsis: true }
+            { title: "平台", dataIndex: "platform", width: 96, ellipsis: true },
+            {
+              title: "操作",
+              width: 90,
+              render: (_: unknown, r: Trade) => (
+                <Popconfirm
+                  title="确认删除这条交易记录？"
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={async () => {
+                    await deleteTrade(r.id);
+                    if (selectedTradeId === r.id) {
+                      setSelectedTradeId(undefined);
+                      setAiResult(null);
+                    }
+                    message.success("交易记录已删除");
+                    await loadAll();
+                  }}
+                >
+                  <Button type="link" danger size="small" icon={<DeleteOutlined />}>
+                    删除
+                  </Button>
+                </Popconfirm>
+              )
+            }
           ]}
         />
       </PageCard>

@@ -22,7 +22,6 @@ import {
   Upload,
   message
 } from "antd";
-import type { FormInstance } from "antd/es/form";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,16 +53,6 @@ const STICKY_PALETTES = [
   { bg: "#ffeef5", border: "#f0a8c4" }
 ];
 
-const FEE_RATE_OPTIONS = [
-  { value: 0.01, label: "万1 (0.01%)" },
-  { value: 0.02, label: "万2 (0.02%)" },
-  { value: 0.03, label: "万3 (0.03%)" },
-  { value: 0.05, label: "万5 (0.05%)" },
-  { value: 0.1, label: "千1 (0.1%)" },
-  { value: 0.15, label: "千1.5 (0.15%)" },
-  { value: 0.25, label: "千2.5 (0.25%)" }
-];
-
 const PLATFORM_PRESET_OPTIONS = [
   { value: "华泰证券", label: "华泰证券" },
   { value: "东方财富", label: "东方财富" },
@@ -73,26 +62,6 @@ const PLATFORM_PRESET_OPTIONS = [
   { value: "支付宝", label: "支付宝" },
   { value: "微信小程序", label: "微信小程序" }
 ];
-
-function syncBuyLegOnChange(form: FormInstance, changed: Partial<Record<string, unknown>>, all: Record<string, unknown>) {
-  const amount = all.buy_amount;
-  const feeP = all.fee_percent;
-  if (amount == null || feeP == null) return;
-  const gross = Number(amount);
-  const rate = Number(feeP) / 100;
-  const net = gross - gross * rate;
-  const price = all.price != null && all.price !== "" ? Number(all.price) : undefined;
-  const qty = all.quantity != null && all.quantity !== "" ? Number(all.quantity) : undefined;
-  if ("price" in changed && price != null && price > 0) {
-    form.setFieldValue("quantity", Number((net / price).toFixed(4)));
-  } else if ("quantity" in changed && qty != null && qty > 0) {
-    form.setFieldValue("price", Number((net / qty).toFixed(6)));
-  } else if (("buy_amount" in changed || "fee_percent" in changed) && price != null && price > 0) {
-    form.setFieldValue("quantity", Number((net / price).toFixed(4)));
-  } else if (("buy_amount" in changed || "fee_percent" in changed) && qty != null && qty > 0) {
-    form.setFieldValue("price", Number((net / qty).toFixed(6)));
-  }
-}
 
 function buildDraftNoteFromAnalysis(trade: Trade, ai: AiAnalysisResult) {
   const d = trade.buy_date || trade.trade_date;
@@ -513,7 +482,6 @@ export default function TradePage() {
           layout="vertical"
           initialValues={{
             buy_date: dayjs(),
-            fee_percent: 0.03,
             holding: true,
             platform_preset: "东方财富"
           }}
@@ -521,15 +489,12 @@ export default function TradePage() {
             if ("holding" in changed && changed.holding) {
               tradeForm.setFieldsValue({ sell_date: undefined, sell_amount: undefined });
             }
-            syncBuyLegOnChange(tradeForm, changed, all);
           }}
           onFinish={async (values) => {
             const holding = Boolean(values.holding);
-            if (!holding) {
-              if (!values.sell_date || values.sell_amount == null) {
-                message.error("已卖出时请填写卖出日期与卖出成交额");
-                return;
-              }
+            if (!holding && !values.sell_date) {
+              message.error("已卖出时请填写卖出日期");
+              return;
             }
             const platform =
               (values.platform_custom && String(values.platform_custom).trim()) ||
@@ -540,15 +505,11 @@ export default function TradePage() {
               name: String(values.name).trim(),
               buy_date: (values.buy_date as Dayjs).format("YYYY-MM-DD"),
               amount: Number(values.buy_amount),
-              fee_percent: Number(values.fee_percent),
               platform,
               notes: values.notes || undefined
             };
-            if (values.price != null && values.price !== "") payload.price = Number(values.price);
-            if (values.quantity != null && values.quantity !== "") payload.quantity = Number(values.quantity);
             if (!holding) {
               payload.sell_date = (values.sell_date as Dayjs).format("YYYY-MM-DD");
-              payload.sell_amount = Number(values.sell_amount);
             }
             await createTrade(payload);
             message.success("交易创建成功");
@@ -558,30 +519,38 @@ export default function TradePage() {
           }}
         >
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-            填写买入时间与买入成交额、手续费率（百分比）；再填<strong>买入单价</strong>或<strong>数量</strong>之一即可推算另一项。勾选「仍持仓」表示尚未卖出；否则填写卖出日与卖出成交额，盈亏由服务端计算。
+            只需填写买入成交额。系统会根据基金代码与买入日期自动从天天基金历史净值反查买入单价并逆向计算买入数量。勾选「仍持仓」表示尚未卖出；否则只需填写卖出日期，系统会按卖出日净值自动估算卖出额并计算盈亏（暂不计手续费）。
           </Typography.Paragraph>
           <Row gutter={12}>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={10}>
               <Form.Item label="买入日期" name="buy_date" rules={[{ required: true }]}>
                 <DatePicker style={{ width: "100%" }} />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item name="holding" valuePropName="checked">
+            <Col xs={24} md={4}>
+              <Form.Item label=" " colon={false} name="holding" valuePropName="checked">
                 <Checkbox>仍持仓（卖出填「至今」）</Checkbox>
               </Form.Item>
+            </Col>
+            <Col xs={24} md={10}>
               <Form.Item shouldUpdate noStyle>
-                {() =>
-                  tradeForm.getFieldValue("holding") ? null : (
-                    <Form.Item
-                      label="卖出日期"
-                      name="sell_date"
-                      rules={[{ required: true, message: "请选择卖出日期" }]}
-                    >
-                      <DatePicker style={{ width: "100%" }} />
-                    </Form.Item>
-                  )
-                }
+                {() => (
+                  <Form.Item
+                    label="卖出日期"
+                    name="sell_date"
+                    rules={[
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (getFieldValue("holding")) return Promise.resolve();
+                          if (value) return Promise.resolve();
+                          return Promise.reject(new Error("请选择卖出日期"));
+                        }
+                      })
+                    ]}
+                  >
+                    <DatePicker style={{ width: "100%" }} disabled={Boolean(tradeForm.getFieldValue("holding"))} />
+                  </Form.Item>
+                )}
               </Form.Item>
             </Col>
           </Row>
@@ -640,44 +609,9 @@ export default function TradePage() {
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col xs={24} md={8}>
-              <Form.Item label="买入成交额（毛）" name="buy_amount" rules={[{ required: true, message: "必填" }]}>
-                <InputNumber min={0.01} style={{ width: "100%" }} placeholder="含费前成交金额" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label="手续费率" name="fee_percent" rules={[{ required: true }]}>
-                <InputNumber min={0} max={100} step={0.01} style={{ width: "100%" }} addonAfter="%" />
-              </Form.Item>
-              <Select
-                placeholder="常用费率"
-                options={FEE_RATE_OPTIONS}
-                onChange={(v) => tradeForm.setFieldValue("fee_percent", v as number)}
-                style={{ width: "100%" }}
-                allowClear
-              />
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item shouldUpdate noStyle>
-                {() =>
-                  tradeForm.getFieldValue("holding") ? null : (
-                    <Form.Item label="卖出成交额（毛）" name="sell_amount" rules={[{ required: true, message: "必填" }]}>
-                      <InputNumber min={0.01} style={{ width: "100%" }} />
-                    </Form.Item>
-                  )
-                }
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={12}>
             <Col xs={24} md={12}>
-              <Form.Item label="买入单价（与数量二选一或都填，以单价优先推算数量）" name="price">
-                <InputNumber min={0.0001} style={{ width: "100%" }} placeholder="可空，由数量反推" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="买入数量" name="quantity">
-                <InputNumber min={0.0001} style={{ width: "100%" }} placeholder="可空，由单价反推" />
+              <Form.Item label="买入成交额" name="buy_amount" rules={[{ required: true, message: "必填" }]}>
+                <InputNumber min={0.01} style={{ width: "100%" }} placeholder="仅需输入成交总额" />
               </Form.Item>
             </Col>
           </Row>

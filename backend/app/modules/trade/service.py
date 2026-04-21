@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import APIException
 from app.modules.trade.models import Trade, TradeDirection
 from app.modules.trade.schemas import TradeCreate
+from app.services.fund_data import fetch_lsjz_eastmoney_json_api_cached
 from app.services.ta_lib import calculate_trade_stats
 
 
@@ -14,10 +16,44 @@ def _round_money(x: float, nd: int = 2) -> float:
     return round(float(x), nd)
 
 
+def _resolve_nav_price_from_lsjz(symbol: str, target_date) -> float:
+    start = (target_date - timedelta(days=7)).isoformat()
+    end = (target_date + timedelta(days=2)).isoformat()
+    data = fetch_lsjz_eastmoney_json_api_cached(
+        symbol,
+        start_date=start,
+        end_date=end,
+        timeout=20.0,
+    )
+    if not data.get("ok"):
+        raise APIException(code=40001, message="买入净值数据暂不可用，请稍后重试", status_code=400)
+    pts = list(data.get("points_asc") or [])
+    if not pts:
+        raise APIException(code=40001, message="未查询到买入日期附近净值，请更换日期", status_code=400)
+    target = target_date.isoformat()
+    chosen = None
+    for p in pts:
+        d = str(p.get("date") or "")
+        if d and d <= target:
+            chosen = p
+        elif d and d > target:
+            break
+    if chosen is None:
+        chosen = pts[0]
+    px = chosen.get("dwjz")
+    try:
+        price = float(px)
+    except (TypeError, ValueError):
+        raise APIException(code=40001, message="净值格式异常，请稍后重试", status_code=400)
+    if price <= 0:
+        raise APIException(code=40001, message="净值无效，请稍后重试", status_code=400)
+    return price
+
+
 def normalize_trade_create_payload(payload: TradeCreate) -> dict:
     """
     将 TradeCreate 转为 Trade ORM 可接受的字段字典。
-    新版：buy_date + amount(买入毛额) + fee_percent + 单价或数量之一；可选 sell_date + sell_amount 已了结。
+    新版：buy_date + amount(买入成交额)；买入单价从天天基金历史净值反查，再反推数量。
     """
     p = payload
     sym = p.symbol.strip()
@@ -28,42 +64,37 @@ def normalize_trade_create_payload(payload: TradeCreate) -> dict:
     if p.buy_date is not None:
         if p.amount is None or p.amount <= 0:
             raise APIException(code=40001, message="买入成交额（amount）须大于 0", status_code=400)
-        fp = p.fee_percent if p.fee_percent is not None else 0.03
-        rate = fp / 100.0
-        fee_buy = _round_money(float(p.amount) * rate)
-        net_buy = float(p.amount) - fee_buy
-
-        qty = float(p.quantity) if p.quantity is not None and p.quantity > 0 else None
-        price = float(p.price) if p.price is not None and p.price > 0 else None
-        if qty and not price:
-            price = _round_money(net_buy / qty, 6)
-        elif price and not qty:
-            qty = _round_money(net_buy / price, 4)
-        else:
-            raise APIException(code=40001, message="请填写买入单价或买入数量之一，以便与成交额、手续费推算另一项", status_code=400)
+        price = _resolve_nav_price_from_lsjz(sym, p.buy_date)
+        qty = _round_money(float(p.amount) / price, 4)
         if qty <= 0 or price <= 0:
             raise APIException(code=40001, message="推算得到的数量或价格无效", status_code=400)
 
         sell_date = p.sell_date
         sell_amt = p.sell_amount
-        if sell_date is not None and sell_amt is not None:
-            fee_sell = _round_money(float(sell_amt) * rate)
-            net_sell = float(sell_amt) - fee_sell
-            profit = _round_money(net_sell - net_buy)
+        if sell_date is not None:
+            # 若已卖出：优先按卖出日净值自动估算卖出成交额，避免手填误差
+            try:
+                sell_price = _resolve_nav_price_from_lsjz(sym, sell_date)
+                sell_amount_auto = _round_money(float(qty) * float(sell_price))
+            except APIException:
+                if sell_amt is None:
+                    raise
+                sell_amount_auto = _round_money(float(sell_amt))
+            profit = _round_money(float(sell_amount_auto) - float(p.amount))
             trade_date = sell_date
             direction = TradeDirection.sell
-            total_fee = _round_money(fee_buy + fee_sell)
-            sell_amount_db = float(sell_amt)
+            total_fee = 0.0
+            sell_amount_db = float(sell_amount_auto)
         elif sell_date is None and sell_amt is None:
             profit = 0.0
             trade_date = p.buy_date
             direction = TradeDirection.buy
-            total_fee = fee_buy
+            total_fee = 0.0
             sell_amount_db = None
         else:
             raise APIException(
                 code=40001,
-                message="已了结时请同时填写「卖出日期」与「卖出成交额」；持仓至今则两者都留空",
+                message="持仓至今请不要填写卖出成交额；已卖出只需填写卖出日期",
                 status_code=400,
             )
 

@@ -6,7 +6,7 @@ from app.modules.trade.models import TradeDirection
 
 
 class TradeCreate(BaseModel):
-    """创建交易：新版（buy_date + 买入成交额 + 费率）或旧版（trade_date + direction + 量价）。"""
+    """创建交易：新版（buy_date + 买入成交额）或旧版（trade_date + direction + 量价）。"""
 
     symbol: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=50)
@@ -16,7 +16,7 @@ class TradeCreate(BaseModel):
     buy_date: date | None = None
     sell_date: date | None = None
     sell_amount: float | None = None
-    fee_percent: float | None = Field(default=None, ge=0, le=100)
+    fee_percent: float | None = Field(default=None, ge=0, le=100, description="已弃用：当前固定忽略手续费")
 
     trade_date: date | None = None
     direction: TradeDirection | None = None

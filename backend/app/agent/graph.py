@@ -10,6 +10,7 @@ from app.agent.nodes import (
     node_asset_allocation,
     node_blocked,
     node_compliance,
+    node_data_preheat,
     node_fundamental,
     node_kline_similar,
     node_load_fund_and_rag,
@@ -28,6 +29,7 @@ _COMPILED = None
 # 与 stream 的 updates 事件对应，供前端展示「当前阶段」
 MAFB_NODE_LABELS: dict[str, str] = {
     "profile": "用户画像（FBTI 金融人格 + 风险偏好）",
+    "preheat": "数据预热（实时指标 + 历史净值特征）",
     "rag": "基金档案加载与 FAISS 向量检索",
     "fundamental": "基本面智能体（规模、夏普、回撤等）",
     "technical": "技术面智能体（动量与趋势特征）",
@@ -44,6 +46,7 @@ MAFB_NODE_LABELS: dict[str, str] = {
 def build_mafb_graph() -> StateGraph:
     graph = StateGraph(MAFBState)
     graph.add_node("profile", node_user_profiling)
+    graph.add_node("preheat", node_data_preheat)
     graph.add_node("rag", node_load_fund_and_rag)
     graph.add_node("fundamental", node_fundamental)
     graph.add_node("technical", node_technical)
@@ -56,7 +59,8 @@ def build_mafb_graph() -> StateGraph:
     graph.add_node("blocked", node_blocked)
 
     graph.set_entry_point("profile")
-    graph.add_edge("profile", "rag")
+    graph.add_edge("profile", "preheat")
+    graph.add_edge("preheat", "rag")
     graph.add_conditional_edges("rag", route_parallel_analysts)
     graph.add_edge("fundamental", "kline_similar")
     graph.add_edge("technical", "kline_similar")

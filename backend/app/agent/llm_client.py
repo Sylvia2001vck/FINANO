@@ -86,6 +86,10 @@ def _raw_preview(text: str, limit: int = 320) -> str:
 def _parse_agent_score(raw: str, expected_name: str) -> AgentScore:
     data = _extract_json_object(raw)
     data.setdefault("agent_name", expected_name)
+    if data.get("error") and not data.get("reason"):
+        data["reason"] = str(data.get("error"))
+    if data.get("score") is None:
+        data["score"] = 0
     return AgentScore.model_validate(data)
 
 
@@ -147,6 +151,8 @@ RAG检索片段：
 {no_user_rule}
 
 请严格输出一个 JSON 对象，键为 agent_name, score, reason。
+若任一关键指标缺失或为 0（不适用于 risk_rating），必须改为输出：
+{{"agent_name":"{agent}","score":0,"reason":"{{\"error\":\"数据源未就绪\"}}"}}。
 score 为整数 -2~+2（-2 强烈负面，+2 强烈正面）。
 reason 必须用中文，且按以下四段组织（可用分号连接）：
 【核心结论】一句话判断；

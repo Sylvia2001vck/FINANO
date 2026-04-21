@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from app.agent.fund_catalog import get_fund_by_code
@@ -12,7 +13,7 @@ from app.agent.top5 import (
     build_position_advice_mafb,
     build_reasoning_chain,
 )
-from app.services.fund_data import fetch_fund_nav_history
+from app.services.fund_data import fetch_fund_live_quote, fetch_fund_nav_history
 from app.services.similar_funds import similar_funds
 
 _FORBIDDEN = ("保证收益", "稳赚", "无风险", "内幕", "必涨", "只赚不赔")
@@ -181,6 +182,72 @@ def _build_kline_symbolic_chunks(code: str, rows: list[dict[str, Any]], days: in
     return chunks
 
 
+def _calc_sharpe_from_returns(returns: list[float]) -> float | None:
+    if len(returns) < 30:
+        return None
+    mean = sum(returns) / len(returns)
+    var = sum((x - mean) ** 2 for x in returns) / max(1, (len(returns) - 1))
+    std = math.sqrt(var)
+    if std <= 1e-8:
+        return None
+    return float((mean / std) * math.sqrt(252.0))
+
+
+def _calc_max_drawdown(nav_vals: list[float]) -> float | None:
+    if len(nav_vals) < 10:
+        return None
+    peak = nav_vals[0]
+    mdd = 0.0
+    for v in nav_vals:
+        if v > peak:
+            peak = v
+        if peak > 0:
+            mdd = max(mdd, (peak - v) / peak)
+    return float(mdd)
+
+
+def _calc_volatility_from_returns(returns: list[float]) -> float | None:
+    if len(returns) < 20:
+        return None
+    mean = sum(returns) / len(returns)
+    var = sum((x - mean) ** 2 for x in returns) / max(1, (len(returns) - 1))
+    return float(math.sqrt(var) * math.sqrt(252.0))
+
+
+def _data_not_ready_reason(agent_key: str, missing_fields: list[str]) -> str:
+    missing = ",".join(missing_fields) if missing_fields else "unknown"
+    return (
+        f'{{"error":"数据源未就绪","agent":"{agent_key}","score":0,'
+        f'"missing_fields":"{missing}"}}'
+    )
+
+
+def _missing_fields_for_agent(agent_key: str, fund: dict[str, Any], state: MAFBState) -> list[str]:
+    nav_len = int(fund.get("nav_points_lookback") or 0)
+    required: dict[str, list[str]] = {
+        "fundamental": ["aum_billion", "sharpe_3y", "max_drawdown_3y"],
+        "technical": ["momentum_60d", "volatility_60d"],
+        "risk": ["risk_rating", "max_drawdown_3y", "volatility_60d"],
+        "kline": ["kline_seed_similarity"],
+        "profiling": ["risk_rating"],
+    }
+    miss: list[str] = []
+    for k in required.get(agent_key, []):
+        val = fund.get(k)
+        if val is None:
+            miss.append(k)
+            continue
+        if isinstance(val, (int, float)) and k != "risk_rating" and float(val) == 0.0:
+            miss.append(k)
+    if agent_key == "kline" and nav_len < 40:
+        miss.append("nav_history_40d")
+    if agent_key == "profiling":
+        profile = state.get("user_profile") or {}
+        if not profile:
+            miss.append("user_profile")
+    return miss
+
+
 def node_user_profiling(state: MAFBState) -> dict[str, Any]:
     include = bool(state.get("include_fbti", True))
     profile = build_user_profile_mafb(
@@ -200,11 +267,62 @@ def node_user_profiling(state: MAFBState) -> dict[str, Any]:
     }
 
 
+def node_data_preheat(state: MAFBState) -> dict[str, Any]:
+    code = (state.get("fund_code") or "510300").strip()
+    fund = get_fund_by_code(code, include_live=False)
+    if not fund:
+        code = "510300"
+        fund = get_fund_by_code(code, include_live=False) or {}
+    fund = dict(fund or {})
+
+    nav_rows = fetch_fund_nav_history(code, days=200, timeout=8.0)
+    nav_vals = [float(r.get("nav") or 0.0) for r in nav_rows if r.get("nav") is not None]
+    rets = [float(r.get("daily_return") or 0.0) for r in nav_rows if r.get("daily_return") is not None]
+
+    if nav_rows:
+        fund["nav_points_lookback"] = len(nav_rows)
+        if len(nav_rows) >= 61:
+            nav_now = float(nav_rows[-1].get("nav") or 0.0)
+            nav_60 = float(nav_rows[-61].get("nav") or 0.0)
+            if nav_60 > 0:
+                fund["momentum_60d"] = (nav_now / nav_60) - 1.0
+        sharpe = _calc_sharpe_from_returns(rets)
+        if sharpe is not None:
+            fund["sharpe_3y"] = sharpe
+        mdd = _calc_max_drawdown(nav_vals)
+        if mdd is not None:
+            fund["max_drawdown_3y"] = mdd
+        vol = _calc_volatility_from_returns(rets)
+        if vol is not None:
+            fund["volatility_60d"] = vol
+
+    live = fetch_fund_live_quote(code, timeout=6.0)
+    if live:
+        fund["live_quote"] = live
+        if not fund.get("name"):
+            fund["name"] = str(live.get("name") or fund.get("name") or "")
+
+    missing_all = _missing_fields_for_agent("fundamental", fund, state)
+    note = (
+        f"数据预热完成：code={code}, nav_points={int(fund.get('nav_points_lookback') or 0)}, "
+        f"live_quote={'yes' if live else 'no'}。"
+    )
+    if missing_all:
+        note += f" 关键字段待补齐：{','.join(missing_all)}。"
+    return {
+        "fund_data": fund,
+        "fund_code": code,
+        "compliance_notes": [note],
+    }
+
+
 def node_load_fund_and_rag(state: MAFBState) -> dict[str, Any]:
     code = (state.get("fund_code") or "510300").strip()
-    fund = get_fund_by_code(code)
+    fund = dict(state.get("fund_data") or {})
     if not fund:
-        fund = get_fund_by_code("510300") or {}
+        fund = get_fund_by_code(code, include_live=False) or {}
+    if not fund:
+        fund = get_fund_by_code("510300", include_live=False) or {}
     query = f"{code} {fund.get('name', '')} {fund.get('track', '')}"
     chunks, metas = retrieve_fund_context(query, top_k=4)
     ranked = rerank_by_profile(metas, state.get("user_profile") or {})
@@ -265,6 +383,12 @@ def _risk_rule(state: MAFBState) -> dict[str, Any]:
 
 def node_fundamental(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
+    missing = _missing_fields_for_agent("fundamental", fund, state)
+    if missing:
+        return {
+            "agent_scores": {"fundamental": 0},
+            "agent_reasons": {"fundamental": _data_not_ready_reason("fundamental", missing)},
+        }
     llm = invoke_finance_agent_score(
         "fundamental",
         "基金基本面分析师（规模、夏普、回撤等历史统计）",
@@ -282,6 +406,12 @@ def node_fundamental(state: MAFBState) -> dict[str, Any]:
 
 def node_technical(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
+    missing = _missing_fields_for_agent("technical", fund, state)
+    if missing:
+        return {
+            "agent_scores": {"technical": 0},
+            "agent_reasons": {"technical": _data_not_ready_reason("technical", missing)},
+        }
     llm = invoke_finance_agent_score(
         "technical",
         "基金趋势与动量分析师（非价格预测）",
@@ -299,6 +429,12 @@ def node_technical(state: MAFBState) -> dict[str, Any]:
 
 def node_risk(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
+    missing = _missing_fields_for_agent("risk", fund, state)
+    if missing:
+        return {
+            "agent_scores": {"risk": 0},
+            "agent_reasons": {"risk": _data_not_ready_reason("risk", missing)},
+        }
     llm = invoke_finance_agent_score(
         "risk",
         "基金风险与用户画像匹配分析师",
@@ -316,6 +452,12 @@ def node_risk(state: MAFBState) -> dict[str, Any]:
 
 def node_profiling(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
+    missing = _missing_fields_for_agent("profiling", fund, state)
+    if missing:
+        return {
+            "agent_scores": {"profiling": 0},
+            "agent_reasons": {"profiling": _data_not_ready_reason("profiling", missing)},
+        }
     llm = invoke_finance_agent_score(
         "profiling",
         "画像匹配分析师（标的风格与用户画像适配评估）",
@@ -342,6 +484,8 @@ def node_kline_similar(state: MAFBState) -> dict[str, Any]:
     except Exception:
         rows = []
     sim = float(rows[0].get("similarity") or 0.0) if rows else 0.0
+    fund = state.get("fund_data") or {}
+    fund["kline_seed_similarity"] = sim
     kline_score = _clamp_score((sim - 0.75) * 6.0)
     level = "形态高度相似" if sim >= 0.85 else ("形态中度相似" if sim >= 0.7 else "形态相似度偏低")
     reason = (
@@ -350,7 +494,14 @@ def node_kline_similar(state: MAFBState) -> dict[str, Any]:
         "【逻辑推演】相似度衡量历史曲线形态接近程度，仅用于形态学参考，不代表未来走势复现；"
         f"【形态评分】{kline_score}"
     )
-    fund = state.get("fund_data") or {}
+    missing = _missing_fields_for_agent("kline", fund, state)
+    if missing:
+        return {
+            "kline_similar_funds": rows,
+            "agent_scores": {"kline": 0},
+            "agent_reasons": {"kline": _data_not_ready_reason("kline", missing)},
+            "compliance_notes": ["K线相似度：数据源未就绪，已输出中性分。"],
+        }
     kline_chunks = _build_kline_symbolic_chunks(code, rows, days=days)
     llm = invoke_finance_agent_score(
         "kline",

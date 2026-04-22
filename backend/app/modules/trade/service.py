@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -50,6 +50,31 @@ def _resolve_nav_price_from_lsjz(symbol: str, target_date) -> float:
     return price
 
 
+def _resolve_latest_nav_price_from_lsjz(symbol: str) -> float | None:
+    today = date.today()
+    start = (today - timedelta(days=14)).isoformat()
+    end = today.isoformat()
+    data = fetch_lsjz_eastmoney_json_api_cached(
+        symbol,
+        start_date=start,
+        end_date=end,
+        timeout=20.0,
+    )
+    if not data.get("ok"):
+        return None
+    pts = list(data.get("points_asc") or [])
+    if not pts:
+        return None
+    for p in reversed(pts):
+        try:
+            px = float(p.get("dwjz"))
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return None
+
+
 def normalize_trade_create_payload(payload: TradeCreate) -> dict:
     """
     将 TradeCreate 转为 Trade ORM 可接受的字段字典。
@@ -86,7 +111,11 @@ def normalize_trade_create_payload(payload: TradeCreate) -> dict:
             total_fee = 0.0
             sell_amount_db = float(sell_amount_auto)
         elif sell_date is None and sell_amt is None:
-            profit = 0.0
+            latest_price = _resolve_latest_nav_price_from_lsjz(sym)
+            if latest_price is not None:
+                profit = _round_money(float(qty) * float(latest_price) - float(p.amount))
+            else:
+                profit = 0.0
             trade_date = p.buy_date
             direction = TradeDirection.buy
             total_fee = 0.0
@@ -163,11 +192,31 @@ def create_trades(db: Session, user_id: int, trades: list[dict]) -> list[Trade]:
 
 
 def list_user_trades(db: Session, user_id: int) -> list[Trade]:
-    return list(
+    trades = list(
         db.scalars(
             select(Trade).where(Trade.user_id == user_id).order_by(Trade.trade_date.desc(), Trade.id.desc())
         )
     )
+    latest_nav_cache: dict[str, float | None] = {}
+    for t in trades:
+        if t.sell_date is not None:
+            continue
+        if t.direction != TradeDirection.buy:
+            continue
+        sym = str(t.symbol or "").strip()
+        if not sym:
+            continue
+        if sym not in latest_nav_cache:
+            latest_nav_cache[sym] = _resolve_latest_nav_price_from_lsjz(sym)
+        latest_px = latest_nav_cache[sym]
+        if latest_px is None:
+            continue
+        try:
+            unrealized = _round_money(float(t.quantity) * float(latest_px) - float(t.amount))
+            t.profit = Decimal(str(unrealized))
+        except Exception:
+            continue
+    return trades
 
 
 def get_user_trade(db: Session, user_id: int, trade_id: int) -> Trade:

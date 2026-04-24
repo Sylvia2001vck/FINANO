@@ -17,6 +17,11 @@ _FBTI_SAMPLE_POOL = 400
 _FBTI_RANK_TOP = 20
 _FBTI_PROMPT_MAX_FUNDS = 20
 
+_STRATEGY_LIBRARY = {
+    "factors": ["value", "growth", "momentum", "low_volatility", "quality", "size", "dividend"],
+    "alpha_models": ["multi_factor", "sector_rotation", "trend_follow", "defensive_barbell", "risk_parity"],
+}
+
 # 规则兜底时名称含以下片段的基金每种片段最多选一只，避免 Top20 里同主题挤满 5 只。
 _NAME_DIVERSITY_FRAGMENTS = (
     "价值成长",
@@ -123,6 +128,114 @@ def _default_preferences_from_arch(arch: dict[str, Any], wuxing: str) -> dict[st
     }
 
 
+def _default_intent_from_arch(
+    arch: dict[str, Any],
+    wuxing: str,
+    natural_intent: str = "",
+    mood: str = "",
+) -> dict[str, Any]:
+    wx = str(wuxing or arch.get("wuxing") or "")
+    sectors: list[str] = []
+    if "火" in wx:
+        sectors.extend(["半导体", "通信", "人工智能"])
+    if "水" in wx:
+        sectors.extend(["交通物流", "红利低波"])
+    if "木" in wx:
+        sectors.extend(["医药", "消费成长"])
+    if "金" in wx:
+        sectors.extend(["价值红利", "宽基"])
+    if "土" in wx:
+        sectors.extend(["宽基", "央国企"])
+    if not sectors:
+        sectors = ["宽基", "行业轮动"]
+    style = "High Alpha / Momentum" if ("激进" in mood or "冲" in natural_intent) else "Balanced Multi-Factor"
+    return {
+        "intent": natural_intent.strip() or "结合金融人格与五行偏好的娱乐向选基",
+        "mapped_sectors": sectors[:4],
+        "strategy_style": style,
+        "risk_tolerance": "Aggressive" if style.startswith("High") else "Balanced",
+        "confidence": 0.55,
+        "explain": [f"五行={wx or '未知'}", f"情绪={mood or '中性'}"],
+    }
+
+
+def infer_metaphysics_finance_intent_with_ai(
+    *,
+    fbti_code: str,
+    fbti_name: str,
+    wuxing: str,
+    time_label: str,
+    arch: dict[str, Any],
+    natural_intent: str = "",
+    mood: str = "",
+) -> tuple[dict[str, Any], str]:
+    system = (
+        "你是玄学到金融策略翻译器。仅输出一个合法 JSON："
+        "intent(字符串), mapped_sectors(字符串数组), strategy_style(字符串), risk_tolerance(字符串), "
+        "confidence(0~1 数字), explain(字符串数组)。不得承诺收益。"
+    )
+    user = f"""用户金融人格：{fbti_code}（{fbti_name}）
+五行偏好：{wuxing}
+当前时间：{time_label}
+人格标签：{json.dumps(list(arch.get('tags') or []), ensure_ascii=False)}
+用户自然语言意图：{natural_intent or "（未提供）"}
+用户当前情绪：{mood or "（未提供）"}
+请把“玄学/情绪描述”翻译成金融可执行意图 JSON。"""
+    parsed, why = _invoke_json_llm(system, user, require_funds=False)
+    if parsed is None or why != "ok":
+        return _default_intent_from_arch(arch, wuxing, natural_intent, mood), why
+    out = {
+        "intent": str(parsed.get("intent") or "").strip() or (natural_intent.strip() or "娱乐向选基"),
+        "mapped_sectors": list(parsed.get("mapped_sectors") or [])[:6],
+        "strategy_style": str(parsed.get("strategy_style") or "Balanced Multi-Factor"),
+        "risk_tolerance": str(parsed.get("risk_tolerance") or "Balanced"),
+        "confidence": float(parsed.get("confidence") or 0.6),
+        "explain": list(parsed.get("explain") or [])[:6],
+    }
+    if not out["mapped_sectors"]:
+        out["mapped_sectors"] = _default_intent_from_arch(arch, wuxing)["mapped_sectors"]
+    out["confidence"] = max(0.0, min(1.0, out["confidence"]))
+    return out, "ok"
+
+
+def infer_strategy_bundle_with_ai(intent_payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    system = (
+        "你是策略调度器。只输出合法 JSON：factors(数组), alpha_models(数组), "
+        "weights(对象，键为 factor，值为 0~1), rationale(字符串)。"
+        "factors 必须从给定白名单中选择。"
+    )
+    user = f"""金融意图：
+{json.dumps(intent_payload, ensure_ascii=False)}
+策略白名单：
+{json.dumps(_STRATEGY_LIBRARY, ensure_ascii=False)}
+请给出 3~5 个因子与 1~2 个 alpha 模型，并给出可解释原因。"""
+    parsed, why = _invoke_json_llm(system, user, require_funds=False)
+    if parsed is None or why != "ok":
+        sectors = list(intent_payload.get("mapped_sectors") or [])
+        factors = ["momentum", "growth"] if any("半导体" in str(x) or "科技" in str(x) for x in sectors) else ["value", "quality"]
+        return {
+            "factors": factors,
+            "alpha_models": ["multi_factor", "sector_rotation"],
+            "weights": {factors[0]: 0.55, factors[1]: 0.45 if len(factors) > 1 else 0.35},
+            "rationale": "按意图关键词回退到规则策略组合。",
+        }, why
+    factors = [f for f in list(parsed.get("factors") or []) if f in _STRATEGY_LIBRARY["factors"]][:5]
+    if not factors:
+        factors = ["momentum", "growth"]
+    alphas = [m for m in list(parsed.get("alpha_models") or []) if m in _STRATEGY_LIBRARY["alpha_models"]][:2] or ["multi_factor"]
+    weights_raw = parsed.get("weights") if isinstance(parsed.get("weights"), dict) else {}
+    weights = {k: float(v) for k, v in weights_raw.items() if k in factors and isinstance(v, (int, float))}
+    if not weights:
+        p = round(1.0 / len(factors), 3)
+        weights = {k: p for k in factors}
+    return {
+        "factors": factors,
+        "alpha_models": alphas,
+        "weights": weights,
+        "rationale": str(parsed.get("rationale") or "基于意图做因子与策略匹配。"),
+    }, "ok"
+
+
 def infer_selection_preferences_with_ai(
     *,
     fbti_code: str,
@@ -130,6 +243,10 @@ def infer_selection_preferences_with_ai(
     wuxing: str,
     time_label: str,
     arch: dict[str, Any],
+    natural_intent: str = "",
+    mood: str = "",
+    intent_payload: dict[str, Any] | None = None,
+    strategy_bundle: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], str]:
     """
     阶段一：仅从人格与五行推断结构化偏好（不附带基金列表，控制 token）。
@@ -152,6 +269,10 @@ def infer_selection_preferences_with_ai(
 参考时间：{time_label}。
 人格标签：{json.dumps(tags, ensure_ascii=False)}
 人格简介：{blurb}
+用户自然语言：{natural_intent or "（无）"}
+用户情绪：{mood or "（无）"}
+意图翻译层输出：{json.dumps(intent_payload or {}, ensure_ascii=False)}
+策略匹配层输出：{json.dumps(strategy_bundle or {}, ensure_ascii=False)}
 请输出上述 JSON。"""
     parsed, why = _invoke_json_llm(system, user, require_funds=False)
     if parsed is None or why != "ok":
@@ -414,8 +535,30 @@ def iter_fbti_ai_selection_sse_events(
     wuxing: str,
     time_label: str,
     arch: dict[str, Any],
+    natural_intent: str = "",
+    mood: str = "",
 ):
     """同步生成器：依次 yield 阶段 dict，最后 yield 与 run_fbti_ai_selection 相同结构的 result dict。"""
+    yield {"event": "stage", "node": "intent", "label": "玄学语义 -> 金融意图翻译…"}
+    intent_payload, why_intent = infer_metaphysics_finance_intent_with_ai(
+        fbti_code=fbti_code,
+        fbti_name=fbti_name,
+        wuxing=wuxing,
+        time_label=time_label,
+        arch=arch,
+        natural_intent=natural_intent,
+        mood=mood,
+    )
+    if why_intent != "ok":
+        logger.info("FBTI 意图翻译阶段回退规则 (why=%s)", why_intent)
+    yield {"event": "intent", "data": intent_payload}
+
+    yield {"event": "stage", "node": "strategy", "label": "金融意图 -> 因子/Alpha 策略匹配…"}
+    strategy_bundle, why_strategy = infer_strategy_bundle_with_ai(intent_payload)
+    if why_strategy != "ok":
+        logger.info("FBTI 策略匹配阶段回退规则 (why=%s)", why_strategy)
+    yield {"event": "strategy", "data": strategy_bundle}
+
     yield {"event": "stage", "node": "prefs", "label": "归纳选股偏好（大模型）…"}
     prefs, why_pref = infer_selection_preferences_with_ai(
         fbti_code=fbti_code,
@@ -423,6 +566,10 @@ def iter_fbti_ai_selection_sse_events(
         wuxing=wuxing,
         time_label=time_label,
         arch=arch,
+        natural_intent=natural_intent,
+        mood=mood,
+        intent_payload=intent_payload,
+        strategy_bundle=strategy_bundle,
     )
     if why_pref != "ok":
         logger.info("FBTI 偏好阶段未取到模型 JSON，已用人格默认规则 (why=%s)", why_pref)
@@ -454,7 +601,10 @@ def iter_fbti_ai_selection_sse_events(
         compact_user_reason=True,
     )
     base_reason = str(result.get("reason") or "").strip()
-    result["reason"] = f"{prefix} {base_reason}".strip()
+    strategy_text = f"策略：factors={strategy_bundle.get('factors')}, alpha={strategy_bundle.get('alpha_models')}。"
+    result["intent"] = intent_payload
+    result["strategy_bundle"] = strategy_bundle
+    result["reason"] = f"{prefix} {strategy_text} {base_reason}".strip()
     yield {"event": "result", "data": result}
 
 
@@ -465,6 +615,8 @@ def run_fbti_ai_selection(
     wuxing: str,
     time_label: str,
     arch: dict[str, Any],
+    natural_intent: str = "",
+    mood: str = "",
 ) -> dict[str, Any]:
     """
     对外入口：偏好 LLM → 随机 400 → 规则 Top20 → 选股 LLM Top5。
@@ -477,6 +629,8 @@ def run_fbti_ai_selection(
         wuxing=wuxing,
         time_label=time_label,
         arch=arch,
+        natural_intent=natural_intent,
+        mood=mood,
     ):
         if isinstance(ev, dict) and ev.get("event") == "result" and isinstance(ev.get("data"), dict):
             last = ev["data"]

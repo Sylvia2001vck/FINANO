@@ -74,7 +74,17 @@ def _build_hourly_top_news(batch_time: datetime, top_n: int) -> list[dict[str, A
             }
         )
     candidates.sort(key=lambda x: x["hot_score"], reverse=True)
-    return candidates[:top_n]
+    deduped: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for item in candidates:
+        nid = str(item.get("news_id") or "")
+        if not nid or nid in seen_ids:
+            continue
+        seen_ids.add(nid)
+        deduped.append(item)
+        if len(deduped) >= top_n:
+            break
+    return deduped
 
 
 def _get_redis_client() -> Any | None:

@@ -25,11 +25,11 @@ def _base_initial():
     }
 
 
-def test_parallel_analysts_fanout_four_nodes():
+def test_parallel_analysts_fanout_five_nodes():
     sends = route_parallel_analysts(_base_initial())
-    assert len(sends) == 4
+    assert len(sends) == 5
     targets = {s.node for s in sends}
-    assert targets == {"fundamental", "technical", "risk", "kline_similar"}
+    assert targets == {"fundamental", "technical", "risk", "attribution", "profiling"}
 
 
 def test_mafb_pipeline_returns_structured_report():
@@ -40,16 +40,14 @@ def test_mafb_pipeline_returns_structured_report():
     assert "scores" in report
     assert "disclaimer" in report
     scores = report.get("scores") or {}
-    for key in ("fundamental", "technical", "risk", "kline", "profiling", "allocation"):
+    for key in ("fundamental", "technical", "risk", "attribution", "profiling", "allocation"):
         assert key in scores
     assert "compliance" in report
-    assert "kline_similar_funds" in report
+    assert "performance_style_attribution" in report
     assert "weighted_total" in report
     assert "reasoning_chain" in report
     assert isinstance(report.get("reasoning_chain"), list)
-    sim5 = report.get("similarity_top5") or []
-    assert isinstance(sim5, list)
-    assert len(sim5) <= 5
+    assert isinstance(report.get("performance_style_attribution"), dict)
     assert report.get("user_profile", {}).get("profile_mode") == "fbti_only"
     assert result.get("weighted_total") is not None
 
@@ -60,7 +58,7 @@ def test_mafb_agent_scores_merged_in_state():
     assert "fundamental" in merged
     assert "technical" in merged
     assert "risk" in merged
-    assert "kline" in merged
+    assert "attribution" in merged
 
 
 def test_mafb_stream_stages_then_state_matches_invoke_shape():

@@ -17,12 +17,8 @@ def _merge_reasons(left: dict[str, str] | None, right: dict[str, str] | None) ->
     return {**(left or {}), **(right or {})}
 
 
-def _merge_kline_list(left: list[dict[str, Any]] | None, right: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """并行节点仅 kline 写入；其余分支无该键时用空列表合并。"""
-    r = list(right or [])
-    if r:
-        return r
-    return list(left or [])
+def _merge_dict_any(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
+    return {**(left or {}), **(right or {})}
 
 
 class MAFBState(TypedDict, total=False):
@@ -41,12 +37,12 @@ class MAFBState(TypedDict, total=False):
 
     fund_data: dict[str, Any]
     rag_chunks: list[str]
+    technical_retrieval: Annotated[dict[str, Any], _merge_dict_any]
 
     agent_scores: Annotated[dict[str, int], _merge_scores]
     agent_reasons: Annotated[dict[str, str], _merge_reasons]
 
     proposed_portfolio: list[dict[str, Any]]
-    kline_similar_funds: Annotated[list[dict[str, Any]], _merge_kline_list]
 
     compliance_notes: Annotated[list[str], _merge_str_list]
 

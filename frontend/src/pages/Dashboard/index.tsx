@@ -1,25 +1,25 @@
-import { Col, List, Row, Statistic, Typography } from "antd";
+import { Col, List, Row, Space, Statistic, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { ProfitTrendChart } from "../../components/Chart/ProfitTrendChart";
 import { PageCard } from "../../components/UI/PageCard";
-import { fetchHotNews, fetchTradeStats, fetchTrades } from "../../services/trade";
-import { HotNewsItem, Trade, TradeStats } from "../../types/trade";
+import { fetchHotNews, fetchTradeStats } from "../../services/trade";
+import { HotNewsItem, TradeStats } from "../../types/trade";
 import { currency, percent } from "../../utils/format";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<TradeStats | null>(null);
-  const [trades, setTrades] = useState<Trade[]>([]);
   const [hotNews, setHotNews] = useState<HotNewsItem[]>([]);
   const [hotUpdatedAt, setHotUpdatedAt] = useState<string>("");
 
   useEffect(() => {
-    void Promise.all([fetchTradeStats(), fetchTrades(), fetchHotNews()]).then(([tradeStats, tradeItems, news]) => {
+    void Promise.all([fetchTradeStats(), fetchHotNews()]).then(([tradeStats, news]) => {
       setStats(tradeStats);
-      setTrades(tradeItems);
       setHotNews(news.items || []);
       setHotUpdatedAt(news.updated_at || "");
     });
   }, []);
+
+  const hotUpdatedText = hotUpdatedAt ? hotUpdatedAt.slice(0, 16).replace("T", " ") : "";
 
   return (
     <div className="page-stack">
@@ -39,11 +39,28 @@ export default function DashboardPage() {
         </Col>
       </Row>
       <PageCard title="收益曲线">
-        <ProfitTrendChart trades={trades} />
+        <ProfitTrendChart dailyPnlSeries={stats?.daily_pnl_series || []} />
       </PageCard>
-      <PageCard title={`金融热点${hotUpdatedAt ? `（更新于：${hotUpdatedAt.slice(0, 16).replace("T", " ")}` : ""}`}>
+      <PageCard
+        title={
+          <Space style={{ width: "100%", justifyContent: "space-between" }}>
+            <span>金融热点</span>
+            {hotUpdatedText ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                更新于 {hotUpdatedText}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        }
+      >
         <List
           dataSource={hotNews}
+          pagination={{
+            pageSize: 3,
+            hideOnSinglePage: true,
+            showSizeChanger: false,
+            size: "small",
+          }}
           renderItem={(item) => (
             <List.Item>
               <List.Item.Meta title={`${item.rank}. ${item.title}`} description={`${item.summary} 来源：${item.source}`} />

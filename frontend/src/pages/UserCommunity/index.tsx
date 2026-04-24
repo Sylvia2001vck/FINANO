@@ -1,5 +1,5 @@
 import { LikeOutlined } from "@ant-design/icons";
-import { Button, Card, Form, Input, List, Select, Space, Tag, Typography, message } from "antd";
+import { Button, Card, Col, Form, Input, List, Row, Select, Space, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
@@ -45,6 +45,7 @@ export default function UserCommunityPage() {
   const [fbtiLoading, setFbtiLoading] = useState(true);
   const [fbtiCode, setFbtiCode] = useState<string | null>(null);
   const [arch, setArch] = useState<FbtiArchetype | null>(null);
+  const [fbtiImageMissing, setFbtiImageMissing] = useState(false);
 
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [postForm] = Form.useForm();
@@ -82,6 +83,10 @@ export default function UserCommunityPage() {
       .catch(() => message.warning("读取 FBTI 失败"))
       .finally(() => setFbtiLoading(false));
   }, []);
+
+  useEffect(() => {
+    setFbtiImageMissing(false);
+  }, [fbtiCode]);
 
   const loadPosts = async () => {
     const p = await fetchPosts();
@@ -158,38 +163,62 @@ export default function UserCommunityPage() {
               <Button onClick={() => navigate("/fbti-test?retake=1")}>重新测试</Button>
             </Space>
             <Card>
-              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-                <div>
-                  <Typography.Text type="secondary">代码 </Typography.Text>
-                  <Typography.Text code style={{ fontSize: 22 }}>
-                    {fbtiCode}
-                  </Typography.Text>
-                </div>
-                {arch && (
-                  <>
-                    <Typography.Title level={5} style={{ margin: 0 }}>
-                      {arch.name}
-                      {arch.nearest_archetype ? (
-                        <Typography.Text type="secondary">（最近归档）</Typography.Text>
-                      ) : null}
-                    </Typography.Title>
-                    <Typography.Paragraph>{arch.description || arch.blurb}</Typography.Paragraph>
-                    {arch.risk_level ? (
-                      <Typography.Text type="secondary">风险档位（演示）：{arch.risk_level}</Typography.Text>
-                    ) : null}
-                    {arch.fund_preference ? (
-                      <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                        选股偏好：{arch.fund_preference}
-                      </Typography.Paragraph>
-                    ) : null}
-                    <Space wrap>
-                      {(arch.tags || arch.style_tags || []).map((t) => (
-                        <Tag key={t}>{t}</Tag>
-                      ))}
-                    </Space>
-                  </>
-                )}
-              </Space>
+              <Row gutter={[20, 16]} align="middle">
+                <Col xs={24} md={16}>
+                  <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                    <div>
+                      <Typography.Text type="secondary">代码 </Typography.Text>
+                      <Typography.Text code style={{ fontSize: 22 }}>
+                        {fbtiCode}
+                      </Typography.Text>
+                    </div>
+                    {arch && (
+                      <>
+                        <Typography.Title level={5} style={{ margin: 0 }}>
+                          {arch.name}
+                          {arch.nearest_archetype ? (
+                            <Typography.Text type="secondary">（最近归档）</Typography.Text>
+                          ) : null}
+                        </Typography.Title>
+                        <Typography.Paragraph>{arch.description || arch.blurb}</Typography.Paragraph>
+                        {arch.risk_level ? (
+                          <Typography.Text type="secondary">风险档位（演示）：{arch.risk_level}</Typography.Text>
+                        ) : null}
+                        {arch.fund_preference ? (
+                          <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+                            选股偏好：{arch.fund_preference}
+                          </Typography.Paragraph>
+                        ) : null}
+                        <Space wrap>
+                          {(arch.tags || arch.style_tags || []).map((t) => (
+                            <Tag key={t}>{t}</Tag>
+                          ))}
+                        </Space>
+                      </>
+                    )}
+                  </Space>
+                </Col>
+                <Col xs={24} md={8}>
+                  {!fbtiImageMissing && fbtiCode ? (
+                    <img
+                      src={`/fbti/${String(fbtiCode).toUpperCase()}.png`}
+                      alt={`${fbtiCode} 人格形象`}
+                      onError={() => setFbtiImageMissing(true)}
+                      style={{
+                        width: "100%",
+                        maxWidth: 240,
+                        height: "auto",
+                        maxHeight: 260,
+                        objectFit: "contain",
+                        display: "block",
+                        margin: "0 auto"
+                      }}
+                    />
+                  ) : (
+                    <Typography.Text type="secondary">未找到对应形象图（请检查 asset 文件名）。</Typography.Text>
+                  )}
+                </Col>
+              </Row>
             </Card>
           </>
         )}

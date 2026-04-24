@@ -1,9 +1,15 @@
 import { BulbOutlined } from "@ant-design/icons";
-import { Button, Card, List, Space, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Input, List, Space, Switch, Table, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
-import { getFbtiProfile, postFbtiAiSelectStream, type FbtiSelectResponse } from "../../services/fbti";
+import {
+  getFbtiProfile,
+  postFbtiAiIntentPreview,
+  postFbtiAiSelectStream,
+  type FbtiIntentPreview,
+  type FbtiSelectResponse
+} from "../../services/fbti";
 
 const WX_COLOR: Record<string, string> = {
   金: "gold",
@@ -30,6 +36,12 @@ export default function AiFundPickPage() {
   const [ai, setAi] = useState<FbtiSelectResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiStage, setAiStage] = useState<string>("");
+  const [naturalIntent, setNaturalIntent] = useState("");
+  const [mood, setMood] = useState("");
+  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [preview, setPreview] = useState<FbtiIntentPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [stageLog, setStageLog] = useState<string[]>([]);
 
   useEffect(() => {
     void getFbtiProfile()
@@ -40,13 +52,38 @@ export default function AiFundPickPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const buildPayload = () => ({
+    natural_intent: naturalIntent.trim() || undefined,
+    mood: mood.trim() || undefined,
+    auto_confirm: autoConfirm
+  });
+
+  const runPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const p = await postFbtiAiIntentPreview(buildPayload());
+      setPreview(p);
+      message.success("已生成意图与策略预览");
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "预览生成失败");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const runAi = async () => {
     setAiLoading(true);
     setAiStage("连接服务…");
+    setStageLog([]);
     try {
       const r = await postFbtiAiSelectStream({
-        onStage: (_node, label) => setAiStage(label)
-      });
+        onStage: (_node, label) => {
+          setAiStage(label);
+          setStageLog((prev) => [...prev, label].slice(-12));
+        },
+        onIntent: (payload) => setPreview((prev) => ({ ...(prev || { strategy_bundle: {}, need_confirm: true }), intent: payload })),
+        onStrategy: (payload) => setPreview((prev) => ({ ...(prev || { intent: {}, need_confirm: true }), strategy_bundle: payload })),
+      }, buildPayload());
       setAi(r);
       setAiStage("");
       message.success("已生成娱乐向组合建议");
@@ -85,11 +122,50 @@ export default function AiFundPickPage() {
       </Typography.Paragraph>
       <PageCard title="一键生成（娱乐向）">
         <Space direction="vertical" style={{ width: "100%" }}>
+          <Input.TextArea
+            rows={2}
+            value={naturalIntent}
+            onChange={(e) => setNaturalIntent(e.target.value)}
+            placeholder="自然语言策略意图（例：今天偏科技成长，但控制回撤）"
+          />
+          <Input
+            value={mood}
+            onChange={(e) => setMood(e.target.value)}
+            placeholder="当前情绪（例：谨慎 / 激进 / 怕回撤）"
+          />
+          <Space wrap>
+            <Typography.Text type="secondary">自动确认执行</Typography.Text>
+            <Switch checked={autoConfirm} onChange={setAutoConfirm} />
+            <Button loading={previewLoading} onClick={() => void runPreview()}>
+              预览意图与策略
+            </Button>
+          </Space>
           <Button type="primary" icon={<BulbOutlined />} loading={aiLoading} onClick={() => void runAi()}>
-            一键 AI 娱乐选基
+            开始流式执行
           </Button>
           {aiLoading && aiStage ? <Typography.Text type="secondary">{aiStage}</Typography.Text> : null}
+          {stageLog.length ? (
+            <List
+              size="small"
+              bordered
+              dataSource={stageLog}
+              renderItem={(line) => <List.Item>{line}</List.Item>}
+            />
+          ) : null}
         </Space>
+        {preview ? (
+          <Card size="small" style={{ marginTop: 16 }} title="意图与策略预览">
+            <Typography.Paragraph style={{ marginBottom: 8 }}>
+              need_confirm: <Tag color={preview.need_confirm ? "gold" : "green"}>{String(preview.need_confirm)}</Tag>
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>
+              意图：{JSON.stringify(preview.intent || {}, null, 2)}
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
+              策略：{JSON.stringify(preview.strategy_bundle || {}, null, 2)}
+            </Typography.Paragraph>
+          </Card>
+        ) : null}
         {ai && (
           <Card size="small" style={{ marginTop: 16 }} title="说明与结果">
             <Typography.Paragraph>{ai.reason}</Typography.Paragraph>

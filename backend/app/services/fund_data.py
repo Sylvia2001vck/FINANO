@@ -198,27 +198,88 @@ def fetch_fund_nav_history(fund_code: str, days: int = 90, timeout: float = 15.0
             return list(payload)
 
     params = {"type": "lsjz", "code": code, "page": 1, "per": per}
+    parsed: list[dict[str, Any]] = []
     try:
         _throttle_lsjz()
-        r = httpx.get(
-            _LSJZ_URL,
-            params=params,
-            timeout=timeout,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": f"https://fund.eastmoney.com/{code}/lsjz.html",
-            },
-        )
-        r.raise_for_status()
-        text = r.text
+        for _ in range(2):
+            try:
+                r = httpx.get(
+                    _LSJZ_URL,
+                    params=params,
+                    timeout=timeout,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Referer": f"https://fund.eastmoney.com/{code}/lsjz.html",
+                    },
+                )
+                r.raise_for_status()
+                text = r.text
+                parsed = parse_lsjz_apidata_body(text)
+                if parsed:
+                    break
+            except Exception:
+                parsed = []
+            time.sleep(0.08)
     except Exception:
         logger.debug("fund nav history request failed: %s", code, exc_info=True)
-        return []
+        parsed = []
     finally:
         global _last_lsjz_mono
         _last_lsjz_mono = time.monotonic()
 
-    parsed = parse_lsjz_apidata_body(text)
+    # F10DataApi 偶发空表/反爬时，回退到 JSON API 区间拉取，提升 nav_history 确定性
+    if not parsed:
+        end = time.strftime("%Y-%m-%d")
+        start_ts = time.time() - max(35, int(days * 1.8)) * 86400
+        start = time.strftime("%Y-%m-%d", time.localtime(start_ts))
+        try:
+            payload = fetch_lsjz_eastmoney_json_api_cached(
+                code,
+                start_date=start,
+                end_date=end,
+                timeout=min(45.0, timeout + 6.0),
+            )
+            pts = list(payload.get("points_asc") or [])
+            rebuilt: list[dict[str, Any]] = []
+            prev_nav: float | None = None
+            for p in pts:
+                d = str(p.get("date") or "").strip()
+                if not d:
+                    continue
+                try:
+                    nav = float(p.get("dwjz"))
+                except Exception:
+                    continue
+                jzzzl = p.get("jzzzl")
+                if isinstance(jzzzl, str):
+                    s = jzzzl.replace("%", "").strip()
+                    try:
+                        daily_return = float(s) / 100.0
+                    except Exception:
+                        daily_return = None
+                elif isinstance(jzzzl, (int, float)):
+                    daily_return = float(jzzzl) / (100.0 if abs(float(jzzzl)) > 2 else 1.0)
+                else:
+                    daily_return = None
+                if daily_return is None:
+                    if prev_nav and prev_nav > 0:
+                        daily_return = nav / prev_nav - 1.0
+                    else:
+                        daily_return = 0.0
+                rebuilt.append(
+                    {
+                        "date": d,
+                        "nav": nav,
+                        "daily_return": float(daily_return),
+                        "daily_pct_display": f"{float(daily_return) * 100:.2f}%",
+                    }
+                )
+                prev_nav = nav
+            parsed = rebuilt
+        except Exception:
+            logger.debug("fund nav json-api fallback failed: %s", code, exc_info=True)
+            parsed = []
+
     if len(parsed) > days:
         parsed = parsed[-days:]
     _nav_hist_cache[cache_key] = (time.monotonic(), list(parsed))

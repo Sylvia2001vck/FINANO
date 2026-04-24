@@ -104,6 +104,33 @@ class Settings(BaseSettings):
     hot_refresh_interval_sec: int = Field(default=3600, ge=300, le=86400, alias="HOT_REFRESH_INTERVAL_SEC")
     hot_top_n: int = Field(default=10, ge=3, le=30, alias="HOT_TOP_N")
     hot_cache_ttl_sec: int = Field(default=3900, ge=60, le=172800, alias="HOT_CACHE_TTL_SEC")
+    # 基本面双数据源：天天基金移动端 + Akshare（可选）
+    fundamental_mobapi_timeout_sec: float = Field(default=8.0, ge=2.0, le=30.0, alias="FUNDAMENTAL_MOBAPI_TIMEOUT_SEC")
+    fundamental_use_akshare: bool = Field(default=True, alias="FUNDAMENTAL_USE_AKSHARE")
+    fundamental_akshare_quarters: int = Field(default=4, ge=2, le=12, alias="FUNDAMENTAL_AKSHARE_QUARTERS")
+    # 基金日快照（全量/大批量）定时落库：优先供 preheat 读取，实时接口仅作增量覆盖
+    fund_snapshot_scheduler_enabled: bool = Field(default=True, alias="FUND_SNAPSHOT_SCHEDULER_ENABLED")
+    fund_snapshot_refresh_interval_sec: int = Field(default=86400, ge=1800, le=604800, alias="FUND_SNAPSHOT_REFRESH_INTERVAL_SEC")
+    fund_snapshot_daily_max_codes: int = Field(default=1200, ge=100, le=30000, alias="FUND_SNAPSHOT_DAILY_MAX_CODES")
+    # 离线净值仓（SQLite）与离线同步任务
+    fund_offline_enabled: bool = Field(default=True, alias="FUND_OFFLINE_ENABLED")
+    fund_offline_db_url: str = Field(default="sqlite:///./data/fund_offline.db", alias="FUND_OFFLINE_DB_URL")
+    fund_offline_sync_interval_sec: int = Field(default=86400, ge=1800, le=604800, alias="FUND_OFFLINE_SYNC_INTERVAL_SEC")
+    fund_offline_sync_full_weekday: int = Field(default=6, ge=0, le=6, alias="FUND_OFFLINE_SYNC_FULL_WEEKDAY")
+    fund_offline_sync_max_codes: int = Field(default=5000, ge=50, le=50000, alias="FUND_OFFLINE_SYNC_MAX_CODES")
+    fund_offline_sync_start_date: str = Field(default="2019-01-01", alias="FUND_OFFLINE_SYNC_START_DATE")
+    # K线离线特征索引
+    kline_window_size_days: int = Field(default=20, ge=10, le=90, alias="KLINE_WINDOW_SIZE_DAYS")
+    kline_paa_dims: int = Field(default=5, ge=2, le=20, alias="KLINE_PAA_DIMS")
+    kline_faiss_index_path: str = Field(default="./data/index/kline_paa5.index", alias="KLINE_FAISS_INDEX_PATH")
+    kline_faiss_meta_path: str = Field(default="./data/index/kline_paa5_meta.parquet", alias="KLINE_FAISS_META_PATH")
+    kline_faiss_version_path: str = Field(default="./data/index/version.json", alias="KLINE_FAISS_VERSION_PATH")
+    technical_retrieval_top_k: int = Field(default=5, ge=1, le=20, alias="TECHNICAL_RETRIEVAL_TOP_K")
+    # 交易复盘双向检索：阈值、TopK 与向量化配置
+    replay_similarity_threshold: float = Field(default=0.80, ge=0.1, le=0.99, alias="REPLAY_SIMILARITY_THRESHOLD")
+    replay_top_k: int = Field(default=3, ge=1, le=10, alias="REPLAY_TOP_K")
+    replay_embedding_model: str = Field(default="text-embedding-v3", alias="REPLAY_EMBEDDING_MODEL")
+    replay_enable_faiss: bool = Field(default=True, alias="REPLAY_ENABLE_FAISS")
 
     @property
     def cors_origins(self) -> List[str]:

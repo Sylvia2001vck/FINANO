@@ -31,6 +31,35 @@ export interface TradeStats {
   max_drawdown: number;
   total_profit: number;
   avg_profit: number;
+  daily_pnl_series?: TradeDailyPnlPoint[];
+}
+
+export interface TradeDailyPnlPoint {
+  date: string;
+  daily_pnl: number;
+  cumulative_pnl: number;
+}
+
+export interface TradeCurvePoint {
+  date: string;
+  nav: number;
+}
+
+export interface TradeCurveMarker {
+  trade_id: number;
+  date: string;
+  action: "buy" | "sell";
+  amount?: number | null;
+  quantity: number;
+  nav?: number | null;
+  label: string;
+}
+
+export interface TradeCurve {
+  symbol: string;
+  name: string;
+  points: TradeCurvePoint[];
+  markers: TradeCurveMarker[];
 }
 
 export interface NoteItem {
@@ -78,4 +107,44 @@ export interface AiAnalysisResult {
   strengths: string[];
   problems: string[];
   suggestions: string[];
+}
+
+export type ReplayIntent = "trade" | "note";
+export type ReplayRoute = "history_compare" | "native_analysis";
+export type ReplaySource = "sql" | "faiss" | "mixed" | "none";
+
+export interface ReplayMatchedTrade {
+  trade_id: number;
+  symbol: string;
+  name: string;
+  trade_date: string;
+  amount: number;
+  profit: number;
+  similarity: number;
+  notes: string[];
+}
+
+export interface ReplayMatchedNote {
+  note_id: number;
+  title: string;
+  content_preview: string;
+  created_at: string;
+  similarity: number;
+  trade_id?: number | null;
+  trade_symbol?: string | null;
+  trade_profit?: number | null;
+}
+
+export interface ReplayAnalysisResult {
+  intent: ReplayIntent;
+  route: ReplayRoute;
+  retrieval_source: ReplaySource;
+  top_score: number;
+  similarity_threshold: number;
+  has_match: boolean;
+  analysis: string;
+  suggestions: string[];
+  matched_trades: ReplayMatchedTrade[];
+  matched_notes: ReplayMatchedNote[];
+  trace: string[];
 }

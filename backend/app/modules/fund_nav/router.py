@@ -10,15 +10,24 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy.orm import Session
 
 from app.core.responses import success_response
 from app.core.security import decode_access_token, get_current_user
+from app.db.session import get_db
 from app.modules.user.models import User
+from app.modules.fund_nav.service import get_fund_snapshot_status
 from app.services.fund_data import fetch_lsjz_eastmoney_json_api_cached
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/funds", tags=["fund-nav"])
+
+
+@router.get("/snapshot-status")
+def snapshot_status(_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    data = get_fund_snapshot_status(db)
+    return success_response(data=data, message="ok")
 
 
 @router.get("/lsjz-json")

@@ -105,8 +105,27 @@ def _compact_fund_for_llm(fund: dict[str, Any]) -> dict[str, Any]:
         "aum_billion",
         "sharpe_3y",
         "max_drawdown_3y",
+        "manager_score",
+        "manager_return_annual",
+        "stock_top10_concentration",
+        "stock_equity_ratio",
+        "holding_drift",
+        "quarter_samples",
         "momentum_60d",
         "volatility_60d",
+        "ema_5",
+        "ema_20",
+        "ema_60",
+        "bias_20",
+        "rsi_14",
+        "macd_dif",
+        "macd_dea",
+        "macd_hist",
+        "macd_signal",
+        "technical_retrieval",
+        "technical_summary",
+        "risk_summary",
+        "news_signals",
         "fee_rate",
     )
     out = {k: fund.get(k) for k in keep if k in fund}
@@ -131,15 +150,15 @@ def _build_score_prompt(
         up = json.dumps(user_profile or {}, ensure_ascii=False)
         user_block = f"\n用户画像(JSON)：{up}\n用户风险等级(1-5)：{user_risk}"
     metric_hints = {
-        "fundamental": "重点评估夏普、卡玛（无则说明缺失并用回撤+夏普替代）、管理规模与同类效率。",
-        "technical": "重点评估60日动量、波动率、均线/趋势状态；不做价格预测。",
-        "risk": "重点评估最大回撤、波动率、风险评级，输出最坏情景下的防御能力。",
-        "kline": "重点评估PAA序列指纹、形态标签与DTW相似案例，只做历史形态学解释。",
+        "fundamental": "重点评估持仓集中度/风格漂移、经理能力与管理规模，同时结合夏普与回撤；新闻仅作辅助，主要用于识别政策导致的逻辑变动。",
+        "technical": "重点评估EMA(5/20/60)、Bias20、RSI14、MACD信号、60日动量与波动率，并结合technical_retrieval中的相似度、历史窗口日期与后续收益统计；不做价格预测。",
+        "risk": "重点评估最大回撤、波动率、Sortino、VaR95、持仓集中度、流动性标签与指数相关性；负面舆情仅作辅助放大器，不得覆盖量化主结论。",
+        "attribution": "重点评估超额收益来源（选股、风格Beta、风格择时、风险控制）及大盘/小盘、价值/成长、质量风格相似度与偏离度。",
         "profiling": "重点评估用户画像与标的风格适配度，解释错配风险与行为后果。",
     }
-    agent_name_scope = "fundamental / technical / risk / kline / profiling"
+    agent_name_scope = "fundamental / technical / risk / attribution / profiling"
     no_user_rule = ""
-    if agent in {"fundamental", "technical", "risk", "kline"}:
+    if agent in {"fundamental", "technical", "risk", "attribution"}:
         no_user_rule = "\n严禁提及“用户/投资者/画像/适配”等词，只讨论标的本身。"
     return f"""你是公募基金/ETF投研助手，仅基于给定结构化数据做事实性评估，不预测价格，不承诺收益。
 角色：{agent_role}
@@ -327,7 +346,7 @@ def _resolve_model_for_agent(agent_key: str | None) -> str:
         "technical": (settings.mafb_model_technical or "").strip(),
         "risk": (settings.mafb_model_risk or "").strip(),
         "profiling": (settings.mafb_model_profiling or "").strip(),
-        "kline": (settings.mafb_model_kline or "").strip(),
+        "attribution": (settings.mafb_model_kline or "").strip(),
         "compliance": (settings.mafb_model_compliance or "").strip(),
     }
     chosen = model_map.get(agent) or ""
@@ -442,7 +461,7 @@ def invoke_finance_agent_score(
 ) -> AgentScore | None:
     """
     返回结构化打分；若所有通道不可用或解析失败则返回 None，由调用方走规则引擎。
-    agent_key: fundamental | technical | risk | kline | profiling
+    agent_key: fundamental | technical | risk | attribution | profiling
 
     llm_deadline_sec：单次 LLM 链路上限（秒）；None 时用 settings.mafb_agent_llm_timeout_sec；≤0 表示不限制。
     """

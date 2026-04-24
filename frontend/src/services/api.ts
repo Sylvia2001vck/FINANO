@@ -43,6 +43,27 @@ api.interceptors.response.use(
     }
     const status = error?.response?.status;
     const url = String(error?.config?.url ?? "");
+    // #region agent log
+    fetch("http://127.0.0.1:7639/ingest/55426510-f649-41d8-96d0-8685d9665a3f", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "464a77" },
+      body: JSON.stringify({
+        sessionId: "464a77",
+        runId: "pre-fix",
+        hypothesisId: "H4",
+        location: "frontend/src/services/api.ts:49",
+        message: "axios_response_error",
+        data: {
+          baseURL: error?.config?.baseURL,
+          url,
+          status: status ?? null,
+          code: error?.code ?? null,
+          message: String(error?.message ?? ""),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     const isAuthEntry = url.includes("/auth/login") || url.includes("/auth/register");
     if (status === 401 && !isAuthEntry) {
       useUserStore.getState().logout();

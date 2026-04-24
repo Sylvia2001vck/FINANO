@@ -50,6 +50,12 @@ class TradeRead(BaseModel):
     updated_at: datetime
 
 
+class TradeDailyPnlPoint(BaseModel):
+    date: date
+    daily_pnl: float
+    cumulative_pnl: float
+
+
 class TradeStats(BaseModel):
     total_trades: int = 0
     win_rate: float = 0
@@ -57,3 +63,26 @@ class TradeStats(BaseModel):
     max_drawdown: float = 0
     total_profit: float = 0
     avg_profit: float = 0
+    daily_pnl_series: list[TradeDailyPnlPoint] = Field(default_factory=list)
+
+
+class TradeCurvePoint(BaseModel):
+    date: date
+    nav: float
+
+
+class TradeCurveMarker(BaseModel):
+    trade_id: int
+    date: date
+    action: str
+    amount: float | None = None
+    quantity: float
+    nav: float | None = None
+    label: str
+
+
+class TradeCurveResponse(BaseModel):
+    symbol: str
+    name: str
+    points: list[TradeCurvePoint]
+    markers: list[TradeCurveMarker]

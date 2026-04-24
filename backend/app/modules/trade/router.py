@@ -6,8 +6,15 @@ from app.core.exceptions import APIException
 from app.core.responses import success_response
 from app.core.security import get_current_user
 from app.db.session import get_db
-from app.modules.trade.schemas import TradeCreate, TradeRead
-from app.modules.trade.service import create_trade, create_trades, delete_trade, list_user_trades, summarize_trades
+from app.modules.trade.schemas import TradeCreate, TradeCurveResponse, TradeRead
+from app.modules.trade.service import (
+    create_trade,
+    create_trades,
+    delete_trade,
+    get_trade_curve_with_markers,
+    list_user_trades,
+    summarize_trades,
+)
 from app.services.ocr import recognize_statement
 
 
@@ -47,8 +54,14 @@ def get_trades(current_user=Depends(get_current_user), db: Session = Depends(get
 
 @router.post("")
 def add_trade(payload: TradeCreate, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    trade = create_trade(db, current_user.id, payload)
-    return success_response(data=TradeRead.model_validate(trade).model_dump(), message="交易记录创建成功")
+    trade, dedup_hit = create_trade(db, current_user.id, payload)
+    return success_response(
+        data={
+            "trade": TradeRead.model_validate(trade).model_dump(),
+            "dedup_hit": bool(dedup_hit),
+        },
+        message="交易记录创建成功",
+    )
 
 
 @router.delete("/{trade_id}")
@@ -73,3 +86,9 @@ async def import_by_ocr(
 @router.get("/stats/summary")
 def stats_summary(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     return success_response(data=summarize_trades(db, current_user.id))
+
+
+@router.get("/curve/{symbol}")
+def trade_curve(symbol: str, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    data = get_trade_curve_with_markers(db, current_user.id, symbol)
+    return success_response(data=TradeCurveResponse.model_validate(data).model_dump())

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.agent.fund_catalog import get_fund_by_code, list_funds_catalog_sample, list_funds_catalog_window, static_demo_pool_size
-from app.agent.fund_similarity import find_similar_kline_funds
+from app.agent.kline_retriever import get_shadow_segments_for_matches, retrieve_technical_matches
 from app.services.similar_funds import similar_funds
 from app.agent.graph import get_mafb_state_after_stream, invoke_mafb, stream_mafb_stages
 from app.agent.task_registry import create_mafb_task, get_mafb_task
@@ -26,7 +26,12 @@ from app.db.session import get_db
 from app.modules.agent.schemas import AgentProfileSave, LLMProbeRequest, MAFBRunRequest
 from app.modules.user.models import User
 from app.modules.user.service import update_investor_profile
-from app.services.ai_fund_selector import iter_fbti_ai_selection_sse_events, run_fbti_ai_selection
+from app.services.ai_fund_selector import (
+    infer_metaphysics_finance_intent_with_ai,
+    infer_strategy_bundle_with_ai,
+    iter_fbti_ai_selection_sse_events,
+    run_fbti_ai_selection,
+)
 from app.services.user_agent_fund_pool import add_to_pool, list_pool_funds, remove_from_pool
 from app.services.fbti_engine import match_archetype
 
@@ -58,6 +63,7 @@ def _initial_state(payload: MAFBRunRequest, risk_preference: int | None, fbti_pr
         "final_report": {},
         "rag_chunks": [],
         "proposed_portfolio": [],
+        "technical_retrieval": {},
     }
 
 
@@ -135,6 +141,7 @@ def _mafb_response_payload(result: dict) -> dict:
         "is_compliant": result.get("is_compliant"),
         "blocked_reason": result.get("blocked_reason"),
         "compliance_notes": result.get("compliance_notes") or [],
+        "technical_retrieval": result.get("technical_retrieval") or {},
     }
     return {"final_report": report, "state_snapshot": safe_snapshot}
 
@@ -177,7 +184,7 @@ def run_mafb_pipeline_stream(
             bootstrap = {
                 "event": "stage",
                 "node": "bootstrap",
-                "label": "执行计划已生成：正在启动基本面/技术面/风控/K线相似并行分析…",
+                "label": "执行计划已生成：正在启动基本面/技术面/风控/业绩风格归因并行分析…",
             }
             yield f"data: {json.dumps(bootstrap, ensure_ascii=False)}\n\n"
             for ev in stream_mafb_stages(initial, thread_id):
@@ -426,26 +433,30 @@ def list_similar_funds(
     return success_response(data={"reference_code": code.strip(), "similar": rows}, message="ok")
 
 
-@router.get("/funds/kline-similar")
-def list_kline_similar_funds(
+@router.get("/funds/kline-shadow")
+def list_kline_shadow_segments(
     code: str = Query(..., min_length=6, max_length=6, description="6 位基金/ETF 代码"),
-    days: int = Query(60, ge=20, le=200),
-    top_k: int = Query(10, ge=1, le=20),
-    method: str = Query("tiered", description="tiered（推荐 PAA+Faiss 粗排 + 带窗 DTW 精排）| cosine | dtw"),
+    top_k: int = Query(5, ge=1, le=10),
     _user=Depends(get_current_user),
 ):
-    """近 N 日日收益率：tiered 为粗筛+精排；cosine/dtw 为全量单算法（兼容）。"""
-    raw = method.lower().strip()
-    if raw == "dtw":
-        m = "dtw"
-    elif raw == "cosine":
-        m = "cosine"
-    else:
-        m = "tiered"
-    rows = find_similar_kline_funds(code.strip(), top_n=top_k, days=days, method=m)
+    """离线仓+FAISS：返回 Technical 相似窗口与可视化影子线片段。"""
+    retrieval = retrieve_technical_matches(code.strip(), top_k=top_k)
+    matches = list(retrieval.get("matches") or [])
+    segments = get_shadow_segments_for_matches(matches)
     return success_response(
-        data={"reference_code": code.strip(), "days": days, "method": m, "similar": rows},
-        message="ok",
+        data={
+            "reference_code": code.strip(),
+            "ok": bool(retrieval.get("ok")),
+            "error": retrieval.get("error"),
+            "query": retrieval.get("query"),
+            "match_dates": [
+                {"code": m.get("code"), "start_date": m.get("start_date"), "end_date": m.get("end_date"), "similarity": m.get("similarity")}
+                for m in matches
+            ],
+            "segments": segments,
+            "data_version": retrieval.get("data_version") or {},
+        },
+        message="ok" if retrieval.get("ok") else "data_not_ready",
     )
 
 
@@ -453,6 +464,9 @@ class FbtiSelectBody(BaseModel):
     """可选覆盖参数（默认读当前登录用户画像）。"""
     fbti_code: str | None = None
     wuxing: str | None = None
+    natural_intent: str | None = None
+    mood: str | None = None
+    auto_confirm: bool = False
 
 
 def _fbti_time_label() -> str:
@@ -513,10 +527,43 @@ def fbti_ai_select_funds(
             wuxing=wx,
             time_label=time_label,
             arch=arch,
+            natural_intent=str(payload.natural_intent or ""),
+            mood=str(payload.mood or ""),
         )
     )
     result = _enrich_fbti_result_with_personalized(user, result)
     return success_response(data=result, message="FBTI AI 选股完成")
+
+
+@router.post("/ai/fbti-select/intent")
+def fbti_ai_select_intent(
+    payload: FbtiSelectBody = FbtiSelectBody(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """阶段一+二预览：玄学语义翻译与策略匹配，供前端确认后再执行。"""
+    _user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
+    fbti_code = str(arch.get("matched_code", arch["code"]))
+    fbti_name = str(arch["name"])
+    intent_payload, _ = infer_metaphysics_finance_intent_with_ai(
+        fbti_code=fbti_code,
+        fbti_name=fbti_name,
+        wuxing=wx,
+        time_label=time_label,
+        arch=arch,
+        natural_intent=str(payload.natural_intent or ""),
+        mood=str(payload.mood or ""),
+    )
+    strategy_bundle, _ = infer_strategy_bundle_with_ai(intent_payload)
+    need_confirm = (not bool(payload.auto_confirm)) and float(intent_payload.get("confidence") or 0.0) < 0.85
+    return success_response(
+        data={
+            "intent": intent_payload,
+            "strategy_bundle": strategy_bundle,
+            "need_confirm": need_confirm,
+        },
+        message="intent_preview_ready",
+    )
 
 
 @router.post("/ai/fbti-select/stream")
@@ -538,6 +585,8 @@ def fbti_ai_select_funds_stream(
                 wuxing=wx,
                 time_label=time_label,
                 arch=arch,
+                natural_intent=str(payload.natural_intent or ""),
+                mood=str(payload.mood or ""),
             ):
                 if ev.get("event") == "result" and isinstance(ev.get("data"), dict):
                     full = _enrich_fbti_result_with_personalized(user, ev["data"])

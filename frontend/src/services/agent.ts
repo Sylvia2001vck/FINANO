@@ -284,34 +284,50 @@ export async function fetchSimilarFunds(code: string, topK = 10) {
   return response.data.data;
 }
 
-export interface KlineSimilarFundRow {
-  code: string;
-  name: string;
-  track: string;
-  similarity: number;
-  method: string;
-  /** tiered 粗排（PAA+归一内积），有则展示 */
-  coarse_similarity?: number;
-  pipeline?: string;
-  fast_mode?: boolean;
-  window_days?: number;
-  aligned_points?: number;
-  nav_series?: string;
-  rationale: string;
+export interface KlineShadowPoint {
+  date: string;
+  nav: number;
 }
 
-export async function fetchKlineSimilarFunds(
+export interface KlineShadowSegment {
+  code: string;
+  start_date: string;
+  end_date: string;
+  similarity: number;
+  fwd_return_5d?: number | null;
+  fwd_return_10d?: number | null;
+  fwd_return_20d?: number | null;
+  points: KlineShadowPoint[];
+}
+
+export interface KlineShadowResponse {
+  reference_code: string;
+  ok: boolean;
+  error?: string | null;
+  query?: Record<string, unknown> | null;
+  match_dates: Array<{ code: string; start_date: string; end_date: string; similarity: number }>;
+  segments: KlineShadowSegment[];
+  data_version?: Record<string, unknown>;
+}
+
+export async function fetchKlineShadowSegments(
   code: string,
-  topK = 10,
-  days = 60,
-  method: "tiered" | "cosine" | "dtw" = "tiered"
-) {
-  const response = await api.get<
-    ApiEnvelope<{ reference_code: string; days: number; method: string; similar: KlineSimilarFundRow[] }>
-  >("/agent/funds/kline-similar", {
-    params: { code, top_k: topK, days, method },
-    skipGlobalLoading: true,
-    timeout: 120_000
+  topK = 5,
+  signal?: AbortSignal
+): Promise<KlineShadowResponse> {
+  const baseURL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+  const token = useUserStore.getState().token;
+  const qs = new URLSearchParams({ code: code.trim(), top_k: String(topK) });
+  const res = await fetch(`${baseURL}/agent/funds/kline-shadow?${qs.toString()}`, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    signal
   });
-  return response.data.data;
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as ApiEnvelope<KlineShadowResponse>;
+  return body.data;
 }

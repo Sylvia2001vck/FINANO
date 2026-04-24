@@ -66,18 +66,43 @@ export interface FbtiSelectResponse {
   }>;
   /** 五行/流年 + 统计的趣味 TOP5（与 MAFB 专业流水线解耦） */
   personalized_top5?: FbtiPersonalizedTop5Row[];
+  intent?: Record<string, unknown>;
+  strategy_bundle?: Record<string, unknown>;
 }
 
-export async function postFbtiAiSelect() {
-  const response = await api.post<ApiEnvelope<FbtiSelectResponse>>("/agent/ai/fbti-select", {}, {
+export interface FbtiAiSelectPayload {
+  natural_intent?: string;
+  mood?: string;
+  auto_confirm?: boolean;
+}
+
+export interface FbtiIntentPreview {
+  intent: Record<string, unknown>;
+  strategy_bundle: Record<string, unknown>;
+  need_confirm: boolean;
+}
+
+export async function postFbtiAiSelect(payload: FbtiAiSelectPayload = {}) {
+  const response = await api.post<ApiEnvelope<FbtiSelectResponse>>("/agent/ai/fbti-select", payload, {
     skipGlobalLoading: true,
     timeout: 600_000
   });
   return response.data.data;
 }
 
+export async function postFbtiAiIntentPreview(payload: FbtiAiSelectPayload = {}) {
+  const response = await api.post<ApiEnvelope<FbtiIntentPreview>>("/agent/ai/fbti-select/intent", payload, {
+    skipGlobalLoading: true,
+    timeout: 120_000,
+  });
+  return response.data.data;
+}
+
 /** SSE：阶段文案 + 最终结果（与 postFbtiAiSelect 返回结构一致） */
-export async function postFbtiAiSelectStream(handlers: { onStage?: (node: string, label: string) => void }) {
+export async function postFbtiAiSelectStream(
+  handlers: { onStage?: (node: string, label: string) => void; onIntent?: (payload: Record<string, unknown>) => void; onStrategy?: (payload: Record<string, unknown>) => void },
+  payload: FbtiAiSelectPayload = {},
+) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
   const token = useUserStore.getState().token;
   const res = await fetch(`${baseURL}/agent/ai/fbti-select/stream`, {
@@ -86,7 +111,7 @@ export async function postFbtiAiSelectStream(handlers: { onStage?: (node: string
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    body: JSON.stringify({})
+    body: JSON.stringify(payload)
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
@@ -124,10 +149,17 @@ export async function postFbtiAiSelectStream(handlers: { onStage?: (node: string
           node?: string;
           label?: string;
           data?: FbtiSelectResponse;
+          data_obj?: Record<string, unknown>;
           message?: string;
         };
         if (msg.event === "stage" && msg.node && msg.label) {
           handlers.onStage?.(msg.node, msg.label);
+        }
+        if (msg.event === "intent" && msg.data && typeof msg.data === "object") {
+          handlers.onIntent?.(msg.data as unknown as Record<string, unknown>);
+        }
+        if (msg.event === "strategy" && msg.data && typeof msg.data === "object") {
+          handlers.onStrategy?.(msg.data as unknown as Record<string, unknown>);
         }
         if (msg.event === "result" && msg.data) {
           result = msg.data;

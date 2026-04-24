@@ -33,10 +33,8 @@ import {
   postWarmFundCatalog,
   removeMyAgentFund,
   runMafbAsync,
-  fetchKlineSimilarFunds,
   fetchSimilarFunds,
   type AgentFundsListResponse,
-  type KlineSimilarFundRow,
   type ListAgentFundsParams,
   type SimilarFundRow
 } from "../../services/agent";
@@ -86,6 +84,288 @@ function PositionAdviceView({ data }: { data: Record<string, unknown> | undefine
   );
 }
 
+function num(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pct(v: unknown, digits = 1): string {
+  const n = num(v);
+  if (n == null) return "—";
+  return `${(n * 100).toFixed(digits)}%`;
+}
+
+type LaneKey = "profiling" | "fundamental" | "technical" | "risk" | "attribution";
+
+function buildTraceLanes(lines: string[]) {
+  const lanes: Record<LaneKey, string[]> = {
+    profiling: [],
+    fundamental: [],
+    technical: [],
+    risk: [],
+    attribution: [],
+  };
+  const running: Record<LaneKey, boolean> = {
+    profiling: false,
+    fundamental: false,
+    technical: false,
+    risk: false,
+    attribution: false,
+  };
+
+  const push = (k: LaneKey, msg: string) => {
+    lanes[k].push(msg);
+    if (lanes[k].length > 14) lanes[k] = lanes[k].slice(-14);
+  };
+
+  for (const line of lines) {
+    const low = line.toLowerCase();
+    const has = (kw: string) => low.includes(kw);
+    const target: LaneKey | null = has("[profiling]") || has("profiling") || has("profile") || line.includes("画像")
+      ? "profiling"
+      : has("[fundamental]") || has("fundamental") || line.includes("基本面")
+      ? "fundamental"
+      : has("[technical]") || has("technical") || line.includes("技术面")
+      ? "technical"
+      : has("[risk]") || has("risk") || line.includes("风控")
+      ? "risk"
+      : has("[attribution]") || has("attribution") || line.includes("归因") || line.includes("风格")
+      ? "attribution"
+      : null;
+    if (!target) continue;
+    push(target, line);
+    if (has("agent_start") || has("llm_channel_start") || has("stage:")) running[target] = true;
+    if (has("agent_done") || has("agent_fallback") || has("stage: 阶段完成")) running[target] = false;
+  }
+
+  return { lanes, running };
+}
+
+function FundamentalInsightView({
+  fund,
+  score,
+  reason,
+  runTrace
+}: {
+  fund: Record<string, unknown> | undefined;
+  score: number | undefined;
+  reason: string | undefined;
+  runTrace: string[];
+}) {
+  if (!fund) {
+    return <Typography.Text type="secondary">暂无基本面数据。</Typography.Text>;
+  }
+
+  const sourceNotes = (fund.source_notes as string[] | undefined) || [];
+  const managerScore = num(fund.manager_score);
+  const managerRet = num(fund.manager_return_annual);
+  const top10 = num(fund.stock_top10_concentration);
+  const eqRatio = num(fund.stock_equity_ratio);
+  const drift = num(fund.holding_drift);
+  const qn = num(fund.quarter_samples);
+
+  const concentrationTag =
+    top10 == null ? "未知" : top10 > 0.6 ? "持仓极度集中" : top10 < 0.3 ? "极其分散" : "集中度中性";
+  const driftTag = drift == null ? "未知" : drift > 0.25 ? "风格剧变" : drift > 0.15 ? "风格偏移" : "风格稳定";
+
+  const llmTrace = runTrace.filter((line) => /fundamental|llm_raw/i.test(line)).slice(-10);
+
+  return (
+    <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+        <Descriptions.Item label="基本面分数">{score ?? "—"}</Descriptions.Item>
+        <Descriptions.Item label="经理能力得分">{managerScore ?? "—"}</Descriptions.Item>
+        <Descriptions.Item label="经理年化收益">{managerRet == null ? "—" : pct(managerRet, 2)}</Descriptions.Item>
+        <Descriptions.Item label="前十大持仓集中度">{pct(top10, 1)}</Descriptions.Item>
+        <Descriptions.Item label="权益仓位">{pct(eqRatio, 1)}</Descriptions.Item>
+        <Descriptions.Item label="风格漂移（季度均值）">{pct(drift, 1)}</Descriptions.Item>
+        <Descriptions.Item label="季度样本数">{qn ?? "—"}</Descriptions.Item>
+        <Descriptions.Item label="数据源状态">
+          <Space wrap>
+            {sourceNotes.length
+              ? sourceNotes.map((s) => (
+                  <Tag key={s} color={/ok|=/.test(s) ? "green" : "orange"}>
+                    {s}
+                  </Tag>
+                ))
+              : "—"}
+          </Space>
+        </Descriptions.Item>
+      </Descriptions>
+
+      <Space wrap>
+        <Tag color={top10 != null && top10 > 0.6 ? "red" : top10 != null && top10 < 0.3 ? "blue" : "gold"}>
+          {concentrationTag}
+        </Tag>
+        <Tag color={drift != null && drift > 0.25 ? "red" : drift != null && drift > 0.15 ? "orange" : "green"}>
+          {driftTag}
+        </Tag>
+      </Space>
+
+      <Collapse
+        bordered
+        items={[
+          {
+            key: "fund-llm-reason",
+            label: "大模型基本面推演（原文）",
+            children: reason ? (
+              <Typography.Paragraph style={{ marginBottom: 0 }}>{reason}</Typography.Paragraph>
+            ) : (
+              <Typography.Text type="secondary">暂无基本面推演。</Typography.Text>
+            )
+          },
+          {
+            key: "fund-llm-trace",
+            label: "调用链路（trace）",
+            children: llmTrace.length ? (
+              <List
+                size="small"
+                dataSource={llmTrace}
+                renderItem={(line) => (
+                  <List.Item>
+                    <Typography.Text style={{ fontSize: 12 }}>{line}</Typography.Text>
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Typography.Text type="secondary">暂无 trace 片段。</Typography.Text>
+            )
+          }
+        ]}
+      />
+    </Space>
+  );
+}
+
+function NewsSignalView({ fund }: { fund: Record<string, unknown> | undefined }) {
+  const news = (fund?.news_signals as Record<string, unknown> | undefined) || {};
+  const fns = (news.fundamental_news as Record<string, unknown>[] | undefined) || [];
+  const ras = (news.risk_alerts as Record<string, unknown>[] | undefined) || [];
+  const policy = Number(news.policy_signal_score ?? 0);
+  const swan = Number(news.black_swan_score ?? 0);
+  const kws = (news.keywords as string[] | undefined) || [];
+  return (
+    <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+        <Descriptions.Item label="新闻源">{String(news.source ?? "—")}</Descriptions.Item>
+        <Descriptions.Item label="抓取时间">{String(news.fetched_at ?? "—")}</Descriptions.Item>
+        <Descriptions.Item label="政策扰动评分">{Number.isFinite(policy) ? policy.toFixed(2) : "0.00"}</Descriptions.Item>
+        <Descriptions.Item label="黑天鹅评分">{Number.isFinite(swan) ? swan.toFixed(2) : "0.00"}</Descriptions.Item>
+        <Descriptions.Item label="关键词" span={2}>
+          <Space wrap>
+            {kws.length ? kws.map((k) => <Tag key={k}>{k}</Tag>) : "—"}
+          </Space>
+        </Descriptions.Item>
+      </Descriptions>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Typography.Title level={5} style={{ marginBottom: 8 }}>
+            Fundamental 关注（逻辑变动）
+          </Typography.Title>
+          <List
+            size="small"
+            dataSource={fns}
+            locale={{ emptyText: "暂无政策相关舆情" }}
+            renderItem={(it) => (
+              <List.Item>
+                <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                  <Typography.Text strong>{String(it.title ?? "—")}</Typography.Text>
+                  <Typography.Paragraph style={{ marginBottom: 0 }} type="secondary">
+                    {String(it.summary ?? "")}
+                  </Typography.Paragraph>
+                  <Space wrap>
+                    {((it.tags as string[] | undefined) || []).map((t) => (
+                      <Tag key={`${String(it.title)}-${t}`} color="blue">
+                        {t}
+                      </Tag>
+                    ))}
+                    {it.url ? (
+                      <a href={String(it.url)} target="_blank" rel="noreferrer">
+                        查看原文
+                      </a>
+                    ) : null}
+                  </Space>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Col>
+        <Col xs={24} lg={12}>
+          <Typography.Title level={5} style={{ marginBottom: 8 }}>
+            Risk 关注（黑天鹅）
+          </Typography.Title>
+          <List
+            size="small"
+            dataSource={ras}
+            locale={{ emptyText: "暂无负面风险舆情" }}
+            renderItem={(it) => (
+              <List.Item>
+                <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                  <Typography.Text strong>{String(it.title ?? "—")}</Typography.Text>
+                  <Typography.Paragraph style={{ marginBottom: 0 }} type="secondary">
+                    {String(it.summary ?? "")}
+                  </Typography.Paragraph>
+                  <Space wrap>
+                    <Tag color="red">negative={Number(it.negative_score ?? 0).toFixed(2)}</Tag>
+                    {((it.tags as string[] | undefined) || []).map((t) => (
+                      <Tag key={`${String(it.title)}-${t}`} color="volcano">
+                        {t}
+                      </Tag>
+                    ))}
+                    {it.url ? (
+                      <a href={String(it.url)} target="_blank" rel="noreferrer">
+                        查看原文
+                      </a>
+                    ) : null}
+                  </Space>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Col>
+      </Row>
+    </Space>
+  );
+}
+
+function RiskAuxFactorView({ fund }: { fund: Record<string, unknown> | undefined }) {
+  const riskSummary = (fund?.risk_summary as Record<string, unknown> | undefined) || {};
+  const newsAux = (riskSummary.news_aux as Record<string, unknown> | undefined) || {};
+  const ratio = num(newsAux.contribution_ratio);
+  const penalty = num(newsAux.penalty);
+  const basePenalty = num(newsAux.base_penalty);
+  const black = num(newsAux.black_swan_score);
+  const policy = num(newsAux.policy_signal_score);
+  const ratioTagColor = ratio == null ? "default" : ratio <= 0.15 ? "green" : ratio <= 0.3 ? "gold" : "red";
+
+  if (!Object.keys(riskSummary).length) {
+    return <Typography.Text type="secondary">暂无风控结构化快照。</Typography.Text>;
+  }
+
+  return (
+    <Space direction="vertical" style={{ width: "100%" }} size="middle">
+      <Alert
+        type="info"
+        showIcon
+        message="新闻因子只做辅助修正，不替代量化风控主指标"
+        description="主指标仍由回撤、波动率、VaR、集中度、流动性与相关性共同决定。"
+      />
+      <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+        <Descriptions.Item label="新闻辅助贡献占比">
+          <Space wrap>
+            <Tag color={ratioTagColor}>{ratio == null ? "—" : pct(ratio, 1)}</Tag>
+            <Typography.Text type="secondary">= news_penalty / (base_penalty + news_penalty)</Typography.Text>
+          </Space>
+        </Descriptions.Item>
+        <Descriptions.Item label="新闻惩罚项">{penalty == null ? "—" : penalty.toFixed(3)}</Descriptions.Item>
+        <Descriptions.Item label="量化基础惩罚项">{basePenalty == null ? "—" : basePenalty.toFixed(3)}</Descriptions.Item>
+        <Descriptions.Item label="黑天鹅分">{black == null ? "—" : black.toFixed(2)}</Descriptions.Item>
+        <Descriptions.Item label="政策扰动分">{policy == null ? "—" : policy.toFixed(2)}</Descriptions.Item>
+      </Descriptions>
+    </Space>
+  );
+}
+
 export default function MAFBPage() {
   const [form] = Form.useForm();
   const watchedFundCode = Form.useWatch("fund_code", form) as string | undefined;
@@ -110,7 +390,6 @@ export default function MAFBPage() {
   const [catalogRetryNonce, setCatalogRetryNonce] = useState(0);
   const [simRefCode, setSimRefCode] = useState("");
   const [simFeatureRows, setSimFeatureRows] = useState<SimilarFundRow[]>([]);
-  const [simKlineRows, setSimKlineRows] = useState<KlineSimilarFundRow[]>([]);
   const [simBusy, setSimBusy] = useState(false);
   const fundNavRef = useRef<FundNavCurvePanelHandle>(null);
   const [runTrace, setRunTrace] = useState<string[]>([]);
@@ -121,6 +400,7 @@ export default function MAFBPage() {
   const navWarmRef = useRef<Set<string>>(new Set());
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeResult, setProbeResult] = useState<Record<string, unknown> | null>(null);
+  const [navPrimaryStatus, setNavPrimaryStatus] = useState<string>("");
 
   const preheatFundNav = async (codeRaw?: string) => {
     const c = String(codeRaw ?? "").trim();
@@ -294,16 +574,14 @@ export default function MAFBPage() {
     setSimBusy(true);
     setSimRefCode(c);
     try {
-      const [feat, kl] = await Promise.all([fetchSimilarFunds(c, 10), fetchKlineSimilarFunds(c, 10, 80)]);
+      const feat = await fetchSimilarFunds(c, 10);
       setSimFeatureRows(feat.similar || []);
-      setSimKlineRows(kl.similar || []);
-      if (!(feat.similar?.length) && !(kl.similar?.length)) {
+      if (!(feat.similar?.length)) {
         message.info("未得到相似结果（目录或净值数据不足）");
       }
     } catch (e) {
       message.error(e instanceof Error ? e.message : "查询失败");
       setSimFeatureRows([]);
-      setSimKlineRows([]);
     } finally {
       setSimBusy(false);
     }
@@ -352,7 +630,10 @@ export default function MAFBPage() {
         const evs = st.trace_events || [];
         if (evs.length) {
           setRunTrace((prev) =>
-            [...prev, ...evs.map((e) => `${e.kind || "event"}: ${e.message || ""}`)].slice(-28)
+            [
+              ...prev,
+              ...evs.map((e) => `${e.node ? `[${e.node}] ` : ""}${e.kind || "event"}: ${e.message || ""}`)
+            ].slice(-28)
           );
         }
         cursor = typeof st.next_cursor === "number" ? st.next_cursor : cursor + evs.length;
@@ -385,7 +666,6 @@ export default function MAFBPage() {
 
   const scores = (report?.scores as Record<string, number> | undefined) || {};
   const portfolio = (report?.proposed_portfolio as Record<string, unknown>[] | undefined) || [];
-  const similarTop5 = (report?.similarity_top5 as Record<string, unknown>[] | undefined) || [];
   const userProf = report?.user_profile as Record<string, unknown> | undefined;
   const chain = (report?.reasoning_chain as string[] | undefined) || [];
   const position = report?.position_advice as Record<string, unknown> | undefined;
@@ -394,6 +674,21 @@ export default function MAFBPage() {
   const agentReasons = (report?.reasons as Record<string, string> | undefined) || {};
   const complianceBlock = report?.compliance as Record<string, unknown> | undefined;
   const ragChunks = (report?.rag_chunks as string[] | undefined) || [];
+  const fundData = report?.fund as Record<string, unknown> | undefined;
+  const riskSummary = (fundData?.risk_summary as Record<string, unknown> | undefined) || {};
+  const riskNewsAux = (riskSummary.news_aux as Record<string, unknown> | undefined) || {};
+  const riskNewsAuxRatio = num(riskNewsAux.contribution_ratio);
+  const complianceNotes = ((complianceBlock?.notes as string[] | undefined) || []).map((x) => String(x ?? ""));
+  const riskWarningNotes = complianceNotes.filter((n) => n.startsWith("风控告警：") || n.startsWith("风控警告："));
+  const commonComplianceNotes = complianceNotes.filter((n) => !riskWarningNotes.includes(n));
+  const lanePack = buildTraceLanes(runTrace);
+  const laneItems: Array<{ key: LaneKey; title: string }> = [
+    { key: "profiling", title: "Profile 泳道" },
+    { key: "fundamental", title: "Fundamental 泳道" },
+    { key: "technical", title: "Technical 泳道" },
+    { key: "risk", title: "Risk 泳道" },
+    { key: "attribution", title: "归因泳道" },
+  ];
 
   /** MAFB 与相似查询互斥：避免并行请求导致结果与当前输入错位 */
   const agentOpBusy = loading || simBusy;
@@ -458,6 +753,36 @@ export default function MAFBPage() {
               }
             />
           )
+        ) : null}
+        {runLogVisible ? (
+          <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+            {laneItems.map((lane) => {
+              const rows = lanePack.lanes[lane.key];
+              const active = lanePack.running[lane.key];
+              return (
+                <Col xs={24} md={12} xl={6} key={lane.key}>
+                  <Card
+                    size="small"
+                    title={
+                      <Space>
+                        <span>{lane.title}</span>
+                        <Tag color={active ? "processing" : "default"}>{active ? "运行中" : "待机/已完成"}</Tag>
+                      </Space>
+                    }
+                    bodyStyle={{ maxHeight: 160, overflow: "auto", fontSize: 12 }}
+                  >
+                    {rows.length ? (
+                      rows.map((x, i) => (
+                        <div key={`${lane.key}-${i}`}>{x}</div>
+                      ))
+                    ) : (
+                      <Typography.Text type="secondary">暂无该泳道事件</Typography.Text>
+                    )}
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
         ) : null}
         <Form
           form={form}
@@ -579,62 +904,39 @@ export default function MAFBPage() {
             linkedFundCode={watchedFundCode}
             chartHeight={300}
             hideQueryButton
+            onPrimaryLoaded={({ fundCode, preset, points }) => {
+              setNavPrimaryStatus(`${fundCode} ${preset} 已就绪 (${points}点)`);
+            }}
           />
+          {navPrimaryStatus ? (
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              {navPrimaryStatus}
+            </Typography.Paragraph>
+          ) : null}
         </div>
 
         {simRefCode ? (
           <div style={{ marginTop: 24 }}>
             <Typography.Title level={5}>相似基金（与上方代码一致：{simRefCode}）</Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-              统计特征余弦与 K 线「tiered」：PAA 降维粗排 + 带窗 DTW 精排（接口可改 method=cosine|dtw）；全市场模式下候选分层抽样，无足够净值时 K
-              线使用演示合成序列。
+              仅保留多维统计特征余弦（夏普、动量、回撤、风险等级、规模）相似结果；K 线序列相似功能已下线。
             </Typography.Paragraph>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} lg={12}>
-                <Typography.Text strong>统计特征相似（最多 10）</Typography.Text>
-                <Table
-                  size="small"
-                  style={{ marginTop: 8 }}
-                  rowKey="code"
-                  pagination={false}
-                  dataSource={simFeatureRows}
-                  locale={{ emptyText: "无数据" }}
-                  columns={[
-                    { title: "代码", dataIndex: "code", width: 92 },
-                    { title: "名称", dataIndex: "name", ellipsis: true },
-                    { title: "赛道", dataIndex: "track", width: 88 },
-                    { title: "相似度", dataIndex: "similarity", width: 88 },
-                    { title: "说明", dataIndex: "rationale", ellipsis: true }
-                  ]}
-                />
-              </Col>
-              <Col xs={24} lg={12}>
-                <Typography.Text strong>K 线序列相似（最多 10）</Typography.Text>
-                <Table
-                  size="small"
-                  style={{ marginTop: 8 }}
-                  rowKey="code"
-                  pagination={false}
-                  dataSource={simKlineRows}
-                  locale={{ emptyText: "无数据" }}
-                  columns={[
-                    { title: "代码", dataIndex: "code", width: 92 },
-                    { title: "名称", dataIndex: "name", ellipsis: true },
-                    { title: "赛道", dataIndex: "track", width: 88 },
-                    { title: "精排", dataIndex: "similarity", width: 80 },
-                    {
-                      title: "粗排",
-                      dataIndex: "coarse_similarity",
-                      width: 76,
-                      render: (v: number | undefined) => (v == null ? "—" : v)
-                    },
-                    { title: "对齐点数", dataIndex: "aligned_points", width: 88 },
-                    { title: "净值来源", dataIndex: "nav_series", width: 88 },
-                    { title: "说明", dataIndex: "rationale", ellipsis: true }
-                  ]}
-                />
-              </Col>
-            </Row>
+            <Typography.Text strong>统计特征相似（最多 10）</Typography.Text>
+            <Table
+              size="small"
+              style={{ marginTop: 8 }}
+              rowKey="code"
+              pagination={false}
+              dataSource={simFeatureRows}
+              locale={{ emptyText: "无数据" }}
+              columns={[
+                { title: "代码", dataIndex: "code", width: 92 },
+                { title: "名称", dataIndex: "name", ellipsis: true },
+                { title: "赛道", dataIndex: "track", width: 88 },
+                { title: "相似度", dataIndex: "similarity", width: 88 },
+                { title: "说明", dataIndex: "rationale", ellipsis: true }
+              ]}
+            />
           </div>
         ) : null}
       </PageCard>
@@ -870,6 +1172,23 @@ export default function MAFBPage() {
                 </Descriptions.Item>
               ))}
             </Descriptions>
+            <Typography.Title level={5}>基本面深度可视化（数据源 → 特征 → 推演）</Typography.Title>
+            <Card size="small">
+              <FundamentalInsightView
+                fund={fundData}
+                score={typeof scores.fundamental === "number" ? scores.fundamental : undefined}
+                reason={agentReasons.fundamental}
+                runTrace={runTrace}
+              />
+            </Card>
+            <Typography.Title level={5}>相关舆情（实时抓取）</Typography.Title>
+            <Card size="small">
+              <NewsSignalView fund={fundData} />
+            </Card>
+            <Typography.Title level={5}>Risk 新闻辅助贡献（可解释）</Typography.Title>
+            <Card size="small">
+              <RiskAuxFactorView fund={fundData} />
+            </Card>
             <Collapse
               bordered
               items={[
@@ -884,7 +1203,14 @@ export default function MAFBPage() {
                       renderItem={([k, text]) => (
                         <List.Item>
                           <Space direction="vertical" size={4} style={{ width: "100%" }}>
-                            <Typography.Text strong>{k}</Typography.Text>
+                            <Space wrap>
+                              <Typography.Text strong>{k}</Typography.Text>
+                              {k === "risk" && riskNewsAuxRatio != null ? (
+                                <Tag color={riskNewsAuxRatio <= 0.15 ? "green" : riskNewsAuxRatio <= 0.3 ? "gold" : "red"}>
+                                  新闻辅助占比 {pct(riskNewsAuxRatio, 1)}
+                                </Tag>
+                              ) : null}
+                            </Space>
                             <Typography.Paragraph style={{ marginBottom: 0 }}>{text}</Typography.Paragraph>
                           </Space>
                         </List.Item>
@@ -905,10 +1231,26 @@ export default function MAFBPage() {
                           {String(complianceBlock.blocked_reason)}
                         </Typography.Paragraph>
                       ) : null}
+                      {riskWarningNotes.length ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={`风控告警（${riskWarningNotes.length}）`}
+                          description={
+                            <List
+                              size="small"
+                              split={false}
+                              dataSource={riskWarningNotes}
+                              renderItem={(t) => <List.Item style={{ paddingInline: 0 }}>{t}</List.Item>}
+                            />
+                          }
+                        />
+                      ) : null}
                       <List
                         size="small"
                         header="备注"
-                        dataSource={(complianceBlock.notes as string[] | undefined) || []}
+                        dataSource={commonComplianceNotes}
+                        locale={{ emptyText: "暂无其他合规备注" }}
                         renderItem={(t) => <List.Item>{t}</List.Item>}
                       />
                     </Space>
@@ -950,44 +1292,55 @@ export default function MAFBPage() {
                 <Typography.Text type="secondary">无</Typography.Text>
               )}
             </Card>
-            <Typography.Title level={5}>相似基金 TOP5（K 线序列 + 统计特征余弦）</Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-              与「相似基金」页同源的多维余弦（夏普、动量、回撤、风险等级、规模）并入表；主排序为 K
-              线对齐日收益相似度（无足够净值时退化为仅统计相似）。
-            </Typography.Paragraph>
-            <Table
-              size="small"
-              rowKey={(row) => String(row.rank ?? row.code)}
-              dataSource={similarTop5}
-              pagination={false}
-              scroll={{ x: "max-content" }}
-              columns={[
-                { title: "#", dataIndex: "rank", width: 44 },
-                { title: "代码", dataIndex: "code", width: 88 },
-                { title: "名称", dataIndex: "name", ellipsis: true },
-                { title: "赛道", dataIndex: "track", width: 88 },
-                {
-                  title: "K线相似度",
-                  dataIndex: "kline_similarity",
-                  render: (v: unknown) => (v == null ? "—" : String(v))
-                },
-                {
-                  title: "统计相似度",
-                  dataIndex: "feature_similarity",
-                  render: (v: unknown) => (v == null ? "—" : String(v))
-                },
-                {
-                  title: "K线说明",
-                  dataIndex: "kline_rationale",
-                  ellipsis: true
-                },
-                {
-                  title: "统计说明",
-                  dataIndex: "feature_rationale",
-                  ellipsis: true
-                }
-              ]}
-            />
+            <Typography.Title level={5}>业绩与风格归因</Typography.Title>
+            <Card size="small">
+              {(() => {
+                const attr = (report.performance_style_attribution as Record<string, unknown> | undefined) || {};
+                const src = (attr.attribution_sources as Record<string, unknown> | undefined) || {};
+                const sim = (attr.style_similarity as Record<string, unknown> | undefined) || {};
+                const dev = (attr.style_deviation as Record<string, unknown> | undefined) || {};
+                return (
+                  <Space direction="vertical" style={{ width: "100%" }}>
+                    <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+                      <Descriptions.Item label="超额收益代理">{pct(attr.excess_return_proxy, 2)}</Descriptions.Item>
+                      <Descriptions.Item label="说明">{String(attr.note || "—")}</Descriptions.Item>
+                    </Descriptions>
+                    <Table
+                      size="small"
+                      pagination={false}
+                      rowKey="k"
+                      dataSource={[
+                        { k: "选股 Alpha", v: src.stock_selection_alpha },
+                        { k: "风格 Beta 溢价", v: src.style_beta_premium },
+                        { k: "风格择时", v: src.style_timing },
+                        { k: "风险控制", v: src.risk_control }
+                      ]}
+                      columns={[
+                        { title: "收益来源", dataIndex: "k" },
+                        { title: "贡献占比", dataIndex: "v", render: (v: unknown) => pct(v, 1) }
+                      ]}
+                    />
+                    <Table
+                      size="small"
+                      pagination={false}
+                      rowKey="k"
+                      dataSource={[
+                        { k: "大盘", s: sim.large_cap, d: dev.large_cap },
+                        { k: "小盘", s: sim.small_cap, d: dev.small_cap },
+                        { k: "价值", s: sim.value, d: dev.value },
+                        { k: "成长", s: sim.growth, d: dev.growth },
+                        { k: "质量", s: sim.quality, d: dev.quality }
+                      ]}
+                      columns={[
+                        { title: "风格维度", dataIndex: "k" },
+                        { title: "相似度", dataIndex: "s", render: (v: unknown) => pct(v, 1) },
+                        { title: "偏离度", dataIndex: "d", render: (v: unknown) => pct(v, 1) }
+                      ]}
+                    />
+                  </Space>
+                );
+              })()}
+            </Card>
             <Typography.Title level={5}>仓位与风险建议</Typography.Title>
             <Card size="small">
               <PositionAdviceView data={position} />

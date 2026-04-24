@@ -86,8 +86,11 @@ def _catalog_rows() -> list[dict[str, Any]]:
     if not _use_eastmoney_full():
         return _STATIC_FUNDS
     from app.agent.eastmoney_fund_loader import get_cached_full_catalog
-
-    return get_cached_full_catalog()
+    try:
+        return get_cached_full_catalog()
+    except Exception:
+        # 全市场索引拉取失败时降级到内置演示池，避免 /agent/funds 直接 500
+        return _STATIC_FUNDS
 
 
 def list_funds_catalog_only() -> list[dict[str, Any]]:

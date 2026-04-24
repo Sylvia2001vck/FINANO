@@ -26,12 +26,16 @@ import {
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TradeCurveMarkersChart } from "../../components/Chart/TradeCurveMarkersChart";
 import { PageCard } from "../../components/UI/PageCard";
 import {
+  analyzeReplayByNote,
+  analyzeReplayByTrade,
   analyzeTrade,
   createNote,
   deleteTrade,
   createTrade,
+  fetchTradeCurve,
   fetchNotes,
   fetchTradeStats,
   fetchTrades,
@@ -40,7 +44,7 @@ import {
   searchTradeSecurities
 } from "../../services/trade";
 import type { SecuritySearchHit } from "../../services/trade";
-import { AiAnalysisResult, NoteItem, Trade, TradeStats } from "../../types/trade";
+import { AiAnalysisResult, NoteItem, ReplayAnalysisResult, Trade, TradeCurve, TradeStats } from "../../types/trade";
 import { currency } from "../../utils/format";
 
 const NOTE_VIEW_KEY = "finano_trade_hub_note_view";
@@ -90,15 +94,22 @@ export default function TradePage() {
   const [stats, setStats] = useState<TradeStats | null>(null);
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [openTradeModal, setOpenTradeModal] = useState(false);
+  const [creatingTrade, setCreatingTrade] = useState(false);
+  const [expandedTradeIds, setExpandedTradeIds] = useState<number[]>([]);
+  const [curveMap, setCurveMap] = useState<Record<string, TradeCurve | null>>({});
+  const [curveLoadingMap, setCurveLoadingMap] = useState<Record<string, boolean>>({});
   const [tradeForm] = Form.useForm();
   const [secOptions, setSecOptions] = useState<SecuritySearchHit[]>([]);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [quickNoteForm] = Form.useForm();
   const [saveFromAiForm] = Form.useForm();
 
-  const [selectedTradeId, setSelectedTradeId] = useState<number>();
-  const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null);
+  const [selectedTradeIds, setSelectedTradeIds] = useState<number[]>([]);
+  const [aiResultMap, setAiResultMap] = useState<Record<number, AiAnalysisResult>>({});
+  const [analyzedTradeIds, setAnalyzedTradeIds] = useState<number[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replayResult, setReplayResult] = useState<ReplayAnalysisResult | null>(null);
 
   const [noteView, setNoteView] = useState<NoteViewMode>(() => {
     try {
@@ -130,19 +141,39 @@ export default function TradePage() {
   }, [openTradeModal]);
 
   useEffect(() => {
-    if (selectedTradeId) {
-      quickNoteForm.setFieldValue("trade_id", String(selectedTradeId));
+    if (selectedTradeIds.length === 1) {
+      quickNoteForm.setFieldValue("trade_id", String(selectedTradeIds[0]));
+    } else {
+      quickNoteForm.setFieldValue("trade_id", undefined);
     }
-  }, [selectedTradeId, quickNoteForm]);
+  }, [selectedTradeIds, quickNoteForm]);
 
-  const selectedTrade = useMemo(
-    () => trades.find((t) => t.id === selectedTradeId),
-    [trades, selectedTradeId]
+  const selectedTrades = useMemo(
+    () => trades.filter((t) => selectedTradeIds.includes(t.id)),
+    [trades, selectedTradeIds]
   );
+  const selectedTrade = selectedTrades.length === 1 ? selectedTrades[0] : undefined;
+  const selectedTradeId = selectedTrade?.id;
 
   useEffect(() => {
-    setAiResult(null);
-  }, [selectedTradeId]);
+    if (selectedTradeIds.length !== 1) {
+      setReplayResult(null);
+    }
+  }, [selectedTradeIds]);
+
+  const loadCurveBySymbol = useCallback(async (symbol: string) => {
+    const code = String(symbol || "").trim();
+    if (!code || curveMap[code] || curveLoadingMap[code]) return;
+    setCurveLoadingMap((m) => ({ ...m, [code]: true }));
+    try {
+      const data = await fetchTradeCurve(code);
+      setCurveMap((m) => ({ ...m, [code]: data }));
+    } catch {
+      setCurveMap((m) => ({ ...m, [code]: null }));
+    } finally {
+      setCurveLoadingMap((m) => ({ ...m, [code]: false }));
+    }
+  }, [curveLoadingMap, curveMap]);
 
   const persistNoteView = (mode: NoteViewMode) => {
     setNoteView(mode);
@@ -154,24 +185,80 @@ export default function TradePage() {
   };
 
   const openSaveNoteModal = () => {
-    if (!selectedTrade || !aiResult) return;
-    const draft = buildDraftNoteFromAnalysis(selectedTrade, aiResult);
+    if (!selectedTrade) return;
+    const ai = aiResultMap[selectedTrade.id];
+    if (!ai) return;
+    const draft = buildDraftNoteFromAnalysis(selectedTrade, ai);
     saveFromAiForm.setFieldsValue({ ...draft, trade_id: String(selectedTrade.id) });
     setSaveNoteOpen(true);
   };
 
-  const runAi = async () => {
-    if (!selectedTradeId) return;
-    setAiLoading(true);
-    setAiResult(null);
+  const resolveLinkedTradeId = (rawTradeId: unknown): number | undefined => {
+    if (selectedTradeId != null) return selectedTradeId;
+    const tid = String(rawTradeId ?? "").trim();
+    if (!tid) return undefined;
+    const n = Number(tid);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const buildReplayFooter = (replay: ReplayAnalysisResult) => {
+    if (replay.has_match && replay.matched_notes.length > 0) {
+      const top = replay.matched_notes[0];
+      const relation = top.trade_id
+        ? `，关联交易 #${top.trade_id}${top.trade_symbol ? `（${top.trade_symbol}）` : ""}`
+        : "";
+      return [
+        "【AI关联回顾】",
+        `你在历史笔记 #${top.note_id}${relation} 里也记录过相似情绪（相似度 ${top.similarity.toFixed(2)}）。`,
+        replay.analysis
+      ].join("\n");
+    }
+    return [
+      "【AI复盘补充】",
+      replay.analysis,
+      ...(replay.suggestions || []).slice(0, 3).map((s) => `- ${s}`)
+    ].join("\n");
+  };
+
+  const enrichNoteContentWithReplay = async (title: string, content: string) => {
     try {
-      const r = await analyzeTrade(selectedTradeId);
-      setAiResult(r);
-      message.success("AI 分析完成");
+      const replay = await analyzeReplayByNote({ title, content });
+      return `${content}\n\n---\n${buildReplayFooter(replay)}`;
+    } catch {
+      return content;
+    }
+  };
+
+  const runAi = async () => {
+    if (!selectedTradeIds.length) {
+      message.warning("请先选中至少一笔交易");
+      return;
+    }
+    setAiLoading(true);
+    setReplayLoading(selectedTradeIds.length === 1);
+    setReplayResult(null);
+    try {
+      const ids = [...selectedTradeIds];
+      const aiPairs = await Promise.all(ids.map(async (id) => ({ id, ai: await analyzeTrade(id) })));
+      setAiResultMap((prev) => {
+        const next = { ...prev };
+        for (const pair of aiPairs) next[pair.id] = pair.ai;
+        return next;
+      });
+      setAnalyzedTradeIds(ids);
+      if (ids.length === 1) {
+        const replay = await analyzeReplayByTrade(ids[0]);
+        setReplayResult(replay);
+        message.success("单笔 AI 分析完成（已自动关联历史相似记录）");
+      } else {
+        setReplayResult(null);
+        message.success(`已完成 ${ids.length} 笔选中交易分析（未选中交易不参与）`);
+      }
     } catch (e) {
       message.error(e instanceof Error ? e.message : "分析失败");
     } finally {
       setAiLoading(false);
+      setReplayLoading(false);
     }
   };
 
@@ -196,23 +283,58 @@ export default function TradePage() {
 
       <PageCard title={`交易记录（累计收益 ${currency(stats?.total_profit || 0)}）`}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          点击表格中的一行选中交易，随后在下方进行 AI 分析与笔记记录。
+          可多选/全选交易后执行 AI 分析；未选中的交易不会参与分析。
         </Typography.Paragraph>
+        <Space style={{ marginBottom: 12 }}>
+          <Button size="small" onClick={() => setSelectedTradeIds(trades.map((t) => t.id))}>
+            全选
+          </Button>
+          <Button size="small" onClick={() => setSelectedTradeIds([])}>
+            清空选择
+          </Button>
+        </Space>
         <Table<Trade>
           rowKey="id"
           size="middle"
           dataSource={trades}
           pagination={{ pageSize: 8 }}
+          expandable={{
+            expandedRowKeys: expandedTradeIds,
+            rowExpandable: (record) => Boolean(record.symbol),
+            onExpand: (expanded, record) => {
+              const code = record.symbol;
+              setExpandedTradeIds((keys) => {
+                if (expanded) return keys.includes(record.id) ? keys : [...keys, record.id];
+                return keys.filter((k) => k !== record.id);
+              });
+              if (expanded) {
+                void loadCurveBySymbol(code);
+              }
+            },
+            expandedRowRender: (record) => (
+              <div>
+                <Typography.Text type="secondary">
+                  同基金全历史买卖节点：红色三角=买入，蓝色菱形=卖出。可同时看到此前与当前交易位置。
+                </Typography.Text>
+                <TradeCurveMarkersChart
+                  curve={curveMap[record.symbol]}
+                  loading={Boolean(curveLoadingMap[record.symbol])}
+                  height={280}
+                />
+              </div>
+            )
+          }}
           rowSelection={{
-            type: "radio",
-            selectedRowKeys: selectedTradeId ? [selectedTradeId] : [],
+            selectedRowKeys: selectedTradeIds,
             onChange: (keys) => {
-              const id = keys[0] as number | undefined;
-              setSelectedTradeId(id);
+              setSelectedTradeIds(keys.map((k) => Number(k)).filter((k) => Number.isFinite(k)));
             }
           }}
           onRow={(record) => ({
-            onClick: () => setSelectedTradeId(record.id),
+            onClick: () =>
+              setSelectedTradeIds((prev) =>
+                prev.includes(record.id) ? prev.filter((id) => id !== record.id) : [...prev, record.id]
+              ),
             style: { cursor: "pointer" }
           })}
           columns={[
@@ -248,10 +370,13 @@ export default function TradePage() {
                   okButtonProps={{ danger: true }}
                   onConfirm={async () => {
                     await deleteTrade(r.id);
-                    if (selectedTradeId === r.id) {
-                      setSelectedTradeId(undefined);
-                      setAiResult(null);
-                    }
+                    setSelectedTradeIds((ids) => ids.filter((id) => id !== r.id));
+                    setAnalyzedTradeIds((ids) => ids.filter((id) => id !== r.id));
+                    setAiResultMap((m) => {
+                      const next = { ...m };
+                      delete next[r.id];
+                      return next;
+                    });
                     message.success("交易记录已删除");
                     await loadAll();
                   }}
@@ -274,57 +399,128 @@ export default function TradePage() {
           </Space>
         }
       >
-        {!selectedTrade ? (
-          <Empty description="请先在上方选中一笔交易" />
-        ) : (
-          <Space direction="vertical" style={{ width: "100%" }} size="middle">
+        <Space direction="vertical" style={{ width: "100%" }} size="middle">
+          {selectedTrades.length ? (
             <Typography.Text>
-              当前选中：<Typography.Text strong>{selectedTrade.symbol}</Typography.Text>{" "}
-              {selectedTrade.name} · {selectedTrade.trade_date} · 盈亏 {currency(selectedTrade.profit)}
+              当前已选 <Typography.Text strong>{selectedTrades.length}</Typography.Text> 笔
+              {selectedTrade
+                ? `（单笔：${selectedTrade.symbol} ${selectedTrade.name} · ${selectedTrade.trade_date} · 盈亏 ${currency(selectedTrade.profit)}）`
+                : "（多笔/全选模式）"}
             </Typography.Text>
-            <Button type="primary" icon={<BulbOutlined />} loading={aiLoading} onClick={() => void runAi()}>
-              生成 AI 分析
-            </Button>
-            {aiLoading ? (
-              <Spin tip="正在调用大模型，请稍候…" />
-            ) : null}
-            {aiResult ? (
-              <Card size="small" title="分析结果">
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} md={8}>
-                    <Typography.Title level={5}>优点</Typography.Title>
-                    <List
-                      size="small"
-                      dataSource={aiResult.strengths}
-                      renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
-                    />
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Typography.Title level={5}>问题</Typography.Title>
-                    <List
-                      size="small"
-                      dataSource={aiResult.problems}
-                      renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
-                    />
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Typography.Title level={5}>建议</Typography.Title>
-                    <List
-                      size="small"
-                      dataSource={aiResult.suggestions}
-                      renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
-                    />
-                  </Col>
-                </Row>
-                <Button type="default" style={{ marginTop: 12 }} onClick={openSaveNoteModal}>
-                  将分析保存为投资笔记
-                </Button>
-              </Card>
-            ) : (
-              !aiLoading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="生成后将在此展示" />
-            )}
-          </Space>
-        )}
+          ) : (
+            <Typography.Text type="secondary">请先在上方勾选交易（支持一笔、多笔或全选）。</Typography.Text>
+          )}
+          <Button type="primary" icon={<BulbOutlined />} loading={aiLoading || replayLoading} onClick={() => void runAi()}>
+            生成 AI 分析（仅分析已选中）
+          </Button>
+          {aiLoading ? <Spin tip="正在调用大模型，请稍候…" /> : null}
+          {replayLoading ? <Spin tip="正在检索历史相似交易与心得…" /> : null}
+          {analyzedTradeIds.length ? (
+            <Space direction="vertical" style={{ width: "100%" }}>
+              {analyzedTradeIds
+                .map((id) => {
+                  const trade = trades.find((t) => t.id === id);
+                  const ai = aiResultMap[id];
+                  if (!trade || !ai) return null;
+                  return { id, trade, ai };
+                })
+                .filter((x): x is { id: number; trade: Trade; ai: AiAnalysisResult } => Boolean(x))
+                .map(({ id, trade, ai }) => (
+                  <Card
+                    key={id}
+                    size="small"
+                    title={`#${id} ${trade.symbol} ${trade.name} · ${currency(trade.profit)}`}
+                  >
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24} md={8}>
+                        <Typography.Title level={5}>优点</Typography.Title>
+                        <List
+                          size="small"
+                          dataSource={ai.strengths}
+                          renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
+                        />
+                      </Col>
+                      <Col xs={24} md={8}>
+                        <Typography.Title level={5}>问题</Typography.Title>
+                        <List
+                          size="small"
+                          dataSource={ai.problems}
+                          renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
+                        />
+                      </Col>
+                      <Col xs={24} md={8}>
+                        <Typography.Title level={5}>建议</Typography.Title>
+                        <List
+                          size="small"
+                          dataSource={ai.suggestions}
+                          renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
+                        />
+                      </Col>
+                    </Row>
+                    {selectedTradeId === id ? (
+                      <Button type="default" style={{ marginTop: 12 }} onClick={openSaveNoteModal}>
+                        将分析保存为投资笔记
+                      </Button>
+                    ) : null}
+                  </Card>
+                ))}
+            </Space>
+          ) : (
+            !aiLoading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="生成后将在此展示" />
+          )}
+          {replayResult ? (
+            <Card
+              size="small"
+              title={
+                <Space wrap>
+                  <span>历史相似瞬间</span>
+                  <Tag color={replayResult.route === "history_compare" ? "green" : "default"}>
+                    {replayResult.route === "history_compare" ? "历史对照分支" : "原生分析分支"}
+                  </Tag>
+                  <Tag>source={replayResult.retrieval_source}</Tag>
+                  <Tag>score={replayResult.top_score.toFixed(3)}</Tag>
+                  <Tag>threshold={replayResult.similarity_threshold.toFixed(2)}</Tag>
+                </Space>
+              }
+            >
+              <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>{replayResult.analysis}</Typography.Paragraph>
+              {replayResult.suggestions.length ? (
+                <>
+                  <Typography.Title level={5}>建议</Typography.Title>
+                  <List
+                    size="small"
+                    dataSource={replayResult.suggestions}
+                    renderItem={(item) => <List.Item style={{ padding: "4px 0" }}>{item}</List.Item>}
+                  />
+                </>
+              ) : null}
+              {replayResult.matched_trades.length ? (
+                <>
+                  <Typography.Title level={5}>匹配交易与历史心得</Typography.Title>
+                  <List
+                    size="small"
+                    dataSource={replayResult.matched_trades}
+                    renderItem={(item) => (
+                      <List.Item style={{ display: "block", padding: "8px 0" }}>
+                        <Typography.Text strong>
+                          #{item.trade_id} {item.symbol} {item.name}
+                        </Typography.Text>
+                        <div>
+                          相似度 {item.similarity.toFixed(3)} · 金额 {currency(item.amount)} · 盈亏 {currency(item.profit)}
+                        </div>
+                        {(item.notes || []).map((n, idx) => (
+                          <div key={`${item.trade_id}-${idx}`} style={{ color: "#666" }}>
+                            - {n}
+                          </div>
+                        ))}
+                      </List.Item>
+                    )}
+                  />
+                </>
+              ) : null}
+            </Card>
+          ) : null}
+        </Space>
       </PageCard>
 
       <PageCard
@@ -351,15 +547,17 @@ export default function TradePage() {
           layout="vertical"
           onFinish={async (values) => {
             const tid = values.trade_id?.toString().trim();
+            const rawContent = String(values.content || "");
+            const enrichedContent = await enrichNoteContentWithReplay(String(values.title || ""), rawContent);
             await createNote({
               title: values.title,
-              content: values.content,
+              content: enrichedContent,
               tags: values.tags || undefined,
               trade_id: tid ? Number(tid) : undefined
             });
-            message.success("笔记已保存");
+            message.success("笔记已保存（已附加 AI 历史关联复盘）");
             quickNoteForm.resetFields();
-            if (selectedTradeId) {
+            if (selectedTradeId != null) {
               quickNoteForm.setFieldsValue({ trade_id: String(selectedTradeId) });
             }
             await loadAll();
@@ -497,11 +695,18 @@ export default function TradePage() {
         title="新增交易 / 持仓"
         open={openTradeModal}
         width={720}
+        confirmLoading={creatingTrade}
+        okButtonProps={{ disabled: creatingTrade }}
+        cancelButtonProps={{ disabled: creatingTrade }}
         onCancel={() => {
+          if (creatingTrade) return;
           setOpenTradeModal(false);
           tradeForm.resetFields();
         }}
-        onOk={() => tradeForm.submit()}
+        onOk={() => {
+          if (creatingTrade) return;
+          tradeForm.submit();
+        }}
         destroyOnClose
       >
         <Form
@@ -518,6 +723,7 @@ export default function TradePage() {
             }
           }}
           onFinish={async (values) => {
+            if (creatingTrade) return;
             const holding = Boolean(values.holding);
             if (!holding && !values.sell_date) {
               message.error("已卖出时请填写卖出日期");
@@ -538,11 +744,20 @@ export default function TradePage() {
             if (!holding) {
               payload.sell_date = (values.sell_date as Dayjs).format("YYYY-MM-DD");
             }
-            await createTrade(payload);
-            message.success("交易创建成功");
-            setOpenTradeModal(false);
-            tradeForm.resetFields();
-            await loadAll();
+            setCreatingTrade(true);
+            try {
+              const created = await createTrade(payload);
+              if (created?.dedup_hit) {
+                message.info("检测到重复提交，已自动去重");
+              } else {
+                message.success("交易创建成功");
+              }
+              setOpenTradeModal(false);
+              tradeForm.resetFields();
+              await loadAll();
+            } finally {
+              setCreatingTrade(false);
+            }
           }}
         >
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
@@ -671,14 +886,15 @@ export default function TradePage() {
         onOk={async () => {
           try {
             const values = await saveFromAiForm.validateFields();
-            const tid = values.trade_id?.toString().trim();
+            const rawContent = String(values.content || "");
+            const enrichedContent = await enrichNoteContentWithReplay(String(values.title || ""), rawContent);
             await createNote({
               title: values.title,
-              content: values.content,
+              content: enrichedContent,
               tags: values.tags || undefined,
-              trade_id: tid ? Number(tid) : undefined
+              trade_id: resolveLinkedTradeId(values.trade_id)
             });
-            message.success("已保存到投资笔记");
+            message.success("已保存到投资笔记（含历史相似关联）");
             setSaveNoteOpen(false);
             saveFromAiForm.resetFields();
             await loadAll();
@@ -696,7 +912,10 @@ export default function TradePage() {
           <Form.Item label="标题" name="title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="关联交易 ID" name="trade_id">
+          <Form.Item label="关联交易">
+            <Typography.Text>{selectedTradeId ? `自动关联 #${selectedTradeId}` : "非单笔选择（将按草稿值回退）"}</Typography.Text>
+          </Form.Item>
+          <Form.Item name="trade_id" hidden>
             <Input />
           </Form.Item>
           <Form.Item label="标签" name="tags">

@@ -111,6 +111,7 @@ export interface FundNavCurvePanelProps {
   embedded?: boolean;
   chartHeight?: number;
   hideQueryButton?: boolean;
+  onPrimaryLoaded?: (info: { fundCode: string; preset: NavRangePreset; panDays: number; points: number }) => void;
 }
 
 export type FundNavCurvePanelHandle = {
@@ -118,7 +119,7 @@ export type FundNavCurvePanelHandle = {
 };
 
 const FundNavCurvePanelInner = forwardRef<FundNavCurvePanelHandle, FundNavCurvePanelProps>(function FundNavCurvePanelInner(
-  { linkedFundCode, embedded = false, chartHeight = 380, hideQueryButton = false },
+  { linkedFundCode, embedded = false, chartHeight = 380, hideQueryButton = false, onPrimaryLoaded },
   ref
 ) {
   const chartRef = useRef<HTMLDivElement | null>(null);
@@ -224,13 +225,14 @@ const FundNavCurvePanelInner = forwardRef<FundNavCurvePanelHandle, FundNavCurveP
       setMeta(out.meta);
       paintChart(out.pts);
       setLiveTagAt(dayjs().format("HH:mm:ss"));
+      onPrimaryLoaded?.({ fundCode: c, preset, panDays, points: out.pts.length });
     } catch (e) {
       message.error(e instanceof Error ? e.message : "请求失败");
       disposeChart();
     } finally {
       setLoading(false);
     }
-  }, [code, preset, panDays, embedded, fetchOneRange, paintChart, disposeChart]);
+  }, [code, preset, panDays, embedded, fetchOneRange, paintChart, disposeChart, onPrimaryLoaded]);
 
   const reloadFull = useCallback(async () => {
     const c = normalizeSixDigitFundCode(code);
@@ -270,6 +272,7 @@ const FundNavCurvePanelInner = forwardRef<FundNavCurvePanelHandle, FundNavCurveP
       paintChart(out.pts);
       dataPrimedRef.current = true;
       setLiveTagAt(dayjs().format("HH:mm:ss"));
+      onPrimaryLoaded?.({ fundCode: c, preset: "1m", panDays: 0, points: out.pts.length });
       setPrefetchBusy(true);
       setPrefetchLabels("近一月 ✓");
 
@@ -300,7 +303,7 @@ const FundNavCurvePanelInner = forwardRef<FundNavCurvePanelHandle, FundNavCurveP
     } finally {
       setLoading(false);
     }
-  }, [code, embedded, fetchOneRange, paintChart, disposeChart]);
+  }, [code, embedded, fetchOneRange, paintChart, disposeChart, onPrimaryLoaded]);
 
   useImperativeHandle(
     ref,

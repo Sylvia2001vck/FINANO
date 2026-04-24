@@ -1,5 +1,14 @@
 import { api, ApiEnvelope } from "./api";
-import { AiAnalysisResult, HotNewsSnapshot, NoteItem, PostItem, Trade, TradeStats } from "../types/trade";
+import {
+  AiAnalysisResult,
+  HotNewsSnapshot,
+  NoteItem,
+  PostItem,
+  ReplayAnalysisResult,
+  Trade,
+  TradeCurve,
+  TradeStats
+} from "../types/trade";
 
 export async function fetchTrades() {
   const response = await api.get<ApiEnvelope<Trade[]>>("/trades");
@@ -14,8 +23,13 @@ export interface SecuritySearchHit {
 /** 新版「买入/卖出窗口」创建体；旧版 OCR 仍为单笔 trade_date 结构 */
 export type TradeCreatePayload = Record<string, unknown>;
 
+export interface CreateTradeResult {
+  trade: Trade;
+  dedup_hit: boolean;
+}
+
 export async function createTrade(payload: TradeCreatePayload) {
-  const response = await api.post<ApiEnvelope<Trade>>("/trades", payload);
+  const response = await api.post<ApiEnvelope<CreateTradeResult>>("/trades", payload);
   return response.data.data;
 }
 
@@ -52,6 +66,12 @@ export async function fetchTradeStats() {
   return response.data.data;
 }
 
+export async function fetchTradeCurve(symbol: string) {
+  const code = encodeURIComponent(String(symbol || "").trim());
+  const response = await api.get<ApiEnvelope<TradeCurve>>(`/trades/curve/${code}`);
+  return response.data.data;
+}
+
 export async function fetchNotes() {
   const response = await api.get<ApiEnvelope<NoteItem[]>>("/notes");
   return response.data.data;
@@ -64,6 +84,22 @@ export async function createNote(payload: { trade_id?: number; title: string; co
 
 export async function analyzeTrade(tradeId: number) {
   const response = await api.post<ApiEnvelope<AiAnalysisResult>>(`/ai/analyze/${tradeId}`, undefined, {
+    skipGlobalLoading: true,
+    timeout: 120_000
+  });
+  return response.data.data;
+}
+
+export async function analyzeReplayByTrade(tradeId: number) {
+  const response = await api.post<ApiEnvelope<ReplayAnalysisResult>>(`/replay/analyze/trade/${tradeId}`, undefined, {
+    skipGlobalLoading: true,
+    timeout: 120_000
+  });
+  return response.data.data;
+}
+
+export async function analyzeReplayByNote(payload: { note_id?: number; title?: string; content?: string }) {
+  const response = await api.post<ApiEnvelope<ReplayAnalysisResult>>("/replay/analyze/note", payload, {
     skipGlobalLoading: true,
     timeout: 120_000
   });

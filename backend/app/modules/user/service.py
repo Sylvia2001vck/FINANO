@@ -44,6 +44,7 @@ def update_investor_profile(
     *,
     mbti: str | None,
     birth_date: date | None,
+    birth_time_slot: str | None,
     layout_facing: str | None,
     risk_preference: int | None,
 ) -> User:
@@ -54,6 +55,8 @@ def update_investor_profile(
         user.mbti = mbti.upper()[:4] if mbti else None
     if birth_date is not None:
         user.birth_date = birth_date
+    if birth_time_slot is not None:
+        user.birth_time_slot = str(birth_time_slot).strip().upper()[:16] if birth_time_slot else None
     if layout_facing is not None:
         user.layout_facing = layout_facing.upper()[:1] if layout_facing else None
     if risk_preference is not None:

@@ -35,6 +35,21 @@ const RISK_OPTIONS = [
   { value: 5, label: "5 · 进取型（追求高弹性）" }
 ];
 
+const BIRTH_TIME_SLOT_OPTIONS = [
+  { value: "ZI", label: "子时 23:00-00:59" },
+  { value: "CHOU", label: "丑时 01:00-02:59" },
+  { value: "YIN", label: "寅时 03:00-04:59" },
+  { value: "MAO", label: "卯时 05:00-06:59" },
+  { value: "CHEN", label: "辰时 07:00-08:59" },
+  { value: "SI", label: "巳时 09:00-10:59" },
+  { value: "WU", label: "午时 11:00-12:59" },
+  { value: "WEI", label: "未时 13:00-14:59" },
+  { value: "SHEN", label: "申时 15:00-16:59" },
+  { value: "YOU", label: "酉时 17:00-18:59" },
+  { value: "XU", label: "戌时 19:00-20:59" },
+  { value: "HAI", label: "亥时 21:00-22:59" }
+];
+
 /** 用户档案 + FBTI 画像 + 社区（AI娱乐选基为侧栏独立模块 /ai-fund-pick） */
 export default function UserCommunityPage() {
   const location = useLocation();
@@ -63,13 +78,13 @@ export default function UserCommunityPage() {
     void getAgentProfile()
       .then((res) => {
         const raw = res?.saved_fields as Record<string, unknown> | null | undefined;
-        if (raw?.birth_date) {
-          profileForm.setFieldsValue({
-            user_birth: raw.birth_date,
-            user_mbti: raw.mbti,
-            risk_preference: raw.risk_preference ?? undefined
-          });
-        }
+        if (!raw) return;
+        profileForm.setFieldsValue({
+          user_birth: raw.birth_date,
+          birth_time_slot: raw.birth_time_slot ?? undefined,
+          user_mbti: raw.mbti,
+          risk_preference: raw.risk_preference ?? undefined
+        });
       })
       .catch(() => {});
   }, [profileForm]);
@@ -119,6 +134,7 @@ export default function UserCommunityPage() {
               try {
                 await saveAgentProfile({
                   user_birth: values.user_birth,
+                  birth_time_slot: values.birth_time_slot ?? undefined,
                   user_mbti: values.user_mbti,
                   risk_preference: values.risk_preference ?? undefined
                 });
@@ -132,6 +148,13 @@ export default function UserCommunityPage() {
           >
             <Form.Item label="出生日期" name="user_birth" rules={[{ required: true }]}>
               <Input placeholder="YYYY-MM-DD" />
+            </Form.Item>
+            <Form.Item
+              label="出生时段"
+              name="birth_time_slot"
+              tooltip="用于自动推算八字时柱（演示规则），AI 选基可一键分析无需手填八字"
+            >
+              <Select allowClear placeholder="请选择（可选，未填默认午时）" options={BIRTH_TIME_SLOT_OPTIONS} />
             </Form.Item>
             <Form.Item label="MBTI" name="user_mbti" rules={[{ required: true }]}>
               <Select options={MBTI} showSearch />

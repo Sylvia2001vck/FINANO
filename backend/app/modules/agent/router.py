@@ -27,6 +27,7 @@ from app.modules.agent.schemas import AgentProfileSave, LLMProbeRequest, MAFBRun
 from app.modules.user.models import User
 from app.modules.user.service import update_investor_profile
 from app.services.ai_fund_selector import (
+    infer_bazi_today_analysis_with_ai,
     infer_metaphysics_finance_intent_with_ai,
     infer_strategy_bundle_with_ai,
     iter_fbti_ai_selection_sse_events,
@@ -34,6 +35,7 @@ from app.services.ai_fund_selector import (
 )
 from app.services.user_agent_fund_pool import add_to_pool, list_pool_funds, remove_from_pool
 from app.services.fbti_engine import match_archetype
+from app.services.bazi_wuxing import BAZI_TIME_SLOT_TO_HOUR, derive_bazi_text_from_birth
 
 router = APIRouter(prefix="/agent", tags=["mafb"])
 
@@ -58,6 +60,7 @@ def _initial_state(payload: MAFBRunRequest, risk_preference: int | None, fbti_pr
         "agent_scores": {},
         "agent_reasons": {},
         "compliance_notes": [],
+        "compliance_rewrite_needed": False,
         "is_compliant": True,
         "blocked_reason": "",
         "final_report": {},
@@ -75,11 +78,15 @@ def save_agent_profile(
 ):
     """保存 MBTI、生日、风险偏好，并返回结构化画像（供报告「命理个性化层」）。"""
     bd = date.fromisoformat(payload.user_birth)
+    slot = str(payload.birth_time_slot or "").strip().upper()
+    if slot and slot not in BAZI_TIME_SLOT_TO_HOUR:
+        raise APIException(code=40003, message="birth_time_slot 非法", status_code=400)
     user = update_investor_profile(
         db,
         current_user.id,
         mbti=payload.user_mbti,
         birth_date=bd,
+        birth_time_slot=slot or None,
         layout_facing="",
         risk_preference=payload.risk_preference,
     )
@@ -95,6 +102,7 @@ def save_agent_profile(
             "saved_fields": {
                 "mbti": user.mbti,
                 "birth_date": user.birth_date.isoformat() if user.birth_date else None,
+                "birth_time_slot": user.birth_time_slot,
                 "risk_preference": user.risk_preference,
             },
             "structured_profile": structured,
@@ -124,6 +132,7 @@ def get_agent_profile(current_user: User = Depends(get_current_user), db: Sessio
             "saved_fields": {
                 "mbti": user.mbti,
                 "birth_date": user.birth_date.isoformat(),
+                "birth_time_slot": user.birth_time_slot,
                 "risk_preference": user.risk_preference,
             },
             "structured_profile": structured,
@@ -464,6 +473,7 @@ class FbtiSelectBody(BaseModel):
     """可选覆盖参数（默认读当前登录用户画像）。"""
     fbti_code: str | None = None
     wuxing: str | None = None
+    bazi_text: str | None = None
     natural_intent: str | None = None
     mood: str | None = None
     auto_confirm: bool = False
@@ -502,11 +512,28 @@ def _fbti_select_context(
     if not user:
         raise APIException(code=10001, status_code=404)
     code = (payload.fbti_code or user.fbti_profile) or ""
+    bazi = str(payload.bazi_text or "").strip()
+    has_birth = bool(user.birth_date)
+    if not code and not bazi and not has_birth:
+        raise APIException(
+            code=40002,
+            message="请先在用户档案保存生日+出生时段，或先完成 FBTI 测试，或手动提供八字文本",
+            status_code=400,
+        )
     if not code:
-        raise APIException(code=40002, message="请先完成 FBTI 测试 POST /api/v1/user/fbti/test", status_code=400)
+        code = "RLDC"
     arch = match_archetype(code)
     wx = (payload.wuxing or user.user_wuxing) or str(arch.get("wuxing") or "")
     return user, arch, wx, _fbti_time_label()
+
+
+def _resolve_bazi_text(payload: FbtiSelectBody, user: User) -> str:
+    manual = str(payload.bazi_text or "").strip()
+    if manual:
+        return manual
+    if user.birth_date:
+        return derive_bazi_text_from_birth(user.birth_date, user.birth_time_slot)
+    return ""
 
 
 @router.post("/ai/fbti-select")
@@ -520,6 +547,7 @@ def fbti_ai_select_funds(
     另附「个性化 TOP5」（五行/流年/统计）仅供趣味展示，与 MAFB 专业流水线解耦。
     """
     user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
+    bazi_text = _resolve_bazi_text(payload, user)
     result = dict(
         run_fbti_ai_selection(
             fbti_code=str(arch.get("matched_code", arch["code"])),
@@ -529,6 +557,7 @@ def fbti_ai_select_funds(
             arch=arch,
             natural_intent=str(payload.natural_intent or ""),
             mood=str(payload.mood or ""),
+            bazi_text=bazi_text,
         )
     )
     result = _enrich_fbti_result_with_personalized(user, result)
@@ -541,23 +570,33 @@ def fbti_ai_select_intent(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """阶段一+二预览：玄学语义翻译与策略匹配，供前端确认后再执行。"""
+    """阶段预览：八字当日解读 + 玄学语义翻译 + 策略匹配，供前端确认后再执行。"""
     _user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
+    bazi_text = _resolve_bazi_text(payload, _user)
     fbti_code = str(arch.get("matched_code", arch["code"]))
     fbti_name = str(arch["name"])
+    bazi_payload, _ = infer_bazi_today_analysis_with_ai(
+        bazi_text=bazi_text,
+        time_label=time_label,
+        natural_intent=str(payload.natural_intent or ""),
+        mood=str(payload.mood or ""),
+    )
     intent_payload, _ = infer_metaphysics_finance_intent_with_ai(
         fbti_code=fbti_code,
         fbti_name=fbti_name,
         wuxing=wx,
         time_label=time_label,
         arch=arch,
-        natural_intent=str(payload.natural_intent or ""),
+        natural_intent=(str(payload.natural_intent or "") + f"；八字解读摘要：{str(bazi_payload.get('bazi_summary') or '')}").strip("；"),
         mood=str(payload.mood or ""),
+        bazi_text=bazi_text,
+        bazi_analysis=bazi_payload,
     )
     strategy_bundle, _ = infer_strategy_bundle_with_ai(intent_payload)
     need_confirm = (not bool(payload.auto_confirm)) and float(intent_payload.get("confidence") or 0.0) < 0.85
     return success_response(
         data={
+            "bazi_analysis": bazi_payload,
             "intent": intent_payload,
             "strategy_bundle": strategy_bundle,
             "need_confirm": need_confirm,
@@ -574,6 +613,7 @@ def fbti_ai_select_funds_stream(
 ):
     """SSE：阶段提示 + 最终结果（data 与 POST /ai/fbti-select 的 data 结构一致）。"""
     user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
+    bazi_text = _resolve_bazi_text(payload, user)
     fbti_code = str(arch.get("matched_code", arch["code"]))
     fbti_name = str(arch["name"])
 
@@ -587,6 +627,7 @@ def fbti_ai_select_funds_stream(
                 arch=arch,
                 natural_intent=str(payload.natural_intent or ""),
                 mood=str(payload.mood or ""),
+                bazi_text=bazi_text,
             ):
                 if ev.get("event") == "result" and isinstance(ev.get("data"), dict):
                     full = _enrich_fbti_result_with_personalized(user, ev["data"])

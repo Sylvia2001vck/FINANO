@@ -22,6 +22,18 @@ _NEG_WORDS = [
     "亏损",
     "问询",
     "风险提示",
+    "暴雷",
+    "业绩下滑",
+    "业绩预减",
+    "亏超",
+    "大幅下跌",
+    "跳水",
+    "承压",
+    "砍单",
+    "裁员",
+    "库存高企",
+    "价格战",
+    "供过于求",
 ]
 _POLICY_WORDS = [
     "政策",
@@ -34,6 +46,9 @@ _POLICY_WORDS = [
     "会议",
     "规划",
     "产业",
+    "征求意见稿",
+    "指导意见",
+    "专项整治",
 ]
 
 
@@ -159,6 +174,26 @@ def fetch_news_signals_for_fund(fund: dict[str, Any], *, timeout: float = 8.0) -
                     "publish_time": m["publish_time"],
                     "tags": neg_hits[:4],
                     "negative_score": min(1.0, 0.25 * len(neg_hits)),
+                }
+            )
+
+    # 轻量兜底：命中新闻但未命中强负词时，对“风险/波动”语义给低权重黑天鹅信号，避免长期 0。
+    if not risk_alerts:
+        weak_risk_words = ["风险", "波动", "回撤", "承压", "不确定性", "扰动"]
+        weak_hits = 0
+        for m in matched[:20]:
+            blob = m["blob"]
+            if any(w in blob for w in weak_risk_words):
+                weak_hits += 1
+        if weak_hits > 0:
+            risk_alerts.append(
+                {
+                    "title": "弱风险语义聚合",
+                    "summary": f"命中 {weak_hits} 条含风险/波动语义新闻，已按低权重计入黑天鹅辅助分。",
+                    "url": "",
+                    "publish_time": datetime.utcnow().isoformat(),
+                    "tags": ["weak_risk_semantics"],
+                    "negative_score": min(0.25, 0.04 * weak_hits),
                 }
             )
 

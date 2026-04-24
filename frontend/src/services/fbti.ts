@@ -66,17 +66,20 @@ export interface FbtiSelectResponse {
   }>;
   /** 五行/流年 + 统计的趣味 TOP5（与 MAFB 专业流水线解耦） */
   personalized_top5?: FbtiPersonalizedTop5Row[];
+  bazi_analysis?: Record<string, unknown>;
   intent?: Record<string, unknown>;
   strategy_bundle?: Record<string, unknown>;
 }
 
 export interface FbtiAiSelectPayload {
+  bazi_text?: string;
   natural_intent?: string;
   mood?: string;
   auto_confirm?: boolean;
 }
 
 export interface FbtiIntentPreview {
+  bazi_analysis?: Record<string, unknown>;
   intent: Record<string, unknown>;
   strategy_bundle: Record<string, unknown>;
   need_confirm: boolean;
@@ -100,7 +103,12 @@ export async function postFbtiAiIntentPreview(payload: FbtiAiSelectPayload = {})
 
 /** SSE：阶段文案 + 最终结果（与 postFbtiAiSelect 返回结构一致） */
 export async function postFbtiAiSelectStream(
-  handlers: { onStage?: (node: string, label: string) => void; onIntent?: (payload: Record<string, unknown>) => void; onStrategy?: (payload: Record<string, unknown>) => void },
+  handlers: {
+    onStage?: (node: string, label: string) => void;
+    onBazi?: (payload: Record<string, unknown>) => void;
+    onIntent?: (payload: Record<string, unknown>) => void;
+    onStrategy?: (payload: Record<string, unknown>) => void;
+  },
   payload: FbtiAiSelectPayload = {},
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
@@ -157,6 +165,9 @@ export async function postFbtiAiSelectStream(
         }
         if (msg.event === "intent" && msg.data && typeof msg.data === "object") {
           handlers.onIntent?.(msg.data as unknown as Record<string, unknown>);
+        }
+        if (msg.event === "bazi" && msg.data && typeof msg.data === "object") {
+          handlers.onBazi?.(msg.data as unknown as Record<string, unknown>);
         }
         if (msg.event === "strategy" && msg.data && typeof msg.data === "object") {
           handlers.onStrategy?.(msg.data as unknown as Record<string, unknown>);

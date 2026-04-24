@@ -13,6 +13,7 @@ from app.core.responses import success_response
 from app.db.base import Base
 from app.db.legacy_cleanup import drop_legacy_comments_table
 from app.db.trade_columns import ensure_trade_lifecycle_columns
+from app.db.user_columns import ensure_user_birth_time_slot_column
 from app.db.session import SessionLocal, engine
 from app.modules.agent.router import router as mafb_router
 from app.modules.ai.router import router as ai_router
@@ -76,6 +77,7 @@ async def lifespan(_: FastAPI):
     _debug_log("H2", "backend/app/main.py:67", "metadata_create_all_done")
     # endregion
     ensure_trade_lifecycle_columns(engine)
+    ensure_user_birth_time_slot_column(engine)
     drop_legacy_comments_table(engine)
     db = SessionLocal()
     try:

@@ -23,12 +23,11 @@ from app.services.news_signals import fetch_news_signals_for_fund
 
 _FORBIDDEN = ("保证收益", "稳赚", "无风险", "内幕", "必涨", "只赚不赔")
 _WEIGHTS = {
-    "fundamental": 0.22,
-    "technical": 0.22,
-    "risk": 0.20,
+    "fundamental": 0.24,
+    "technical": 0.24,
+    "risk": 0.22,
     "attribution": 0.18,
     "profiling": 0.12,
-    "allocation": 0.06,
 }
 
 
@@ -839,6 +838,24 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
         code = "510300"
         fund = get_fund_by_code(code, include_live=False) or {}
     fund = dict(fund or {})
+    # eastmoney_full 目录里若为 0，通常是占位而非真实值；先归空，避免被当成有效硬事实。
+    for k in (
+        "aum_billion",
+        "manager_score",
+        "manager_return_annual",
+        "stock_top10_concentration",
+        "stock_top5_concentration",
+        "stock_equity_ratio",
+    ):
+        v0 = fund.get(k)
+        if isinstance(v0, (int, float)) and float(v0) == 0.0:
+            fund[k] = None
+    # TOP10/持仓字段不再信任 eastmoney_full 目录值，统一由 akshare/snapshot 回填。
+    if (settings.fund_catalog_mode or "").strip().lower() == "eastmoney_full":
+        fund["stock_top10_concentration"] = None
+        fund["stock_top5_concentration"] = None
+        fund["stock_equity_ratio"] = None
+        fund["top_holdings"] = []
     catalog_snapshot = dict(fund)
     computed_keys: set[str] = set()
     snap = get_latest_fund_snapshot_cached(code)
@@ -957,7 +974,34 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
         rets = [float(r.get("daily_return") or 0.0) for r in nav_rows if r.get("daily_return") is not None]
         fund["nav_points_lookback"] = len(nav_rows)
 
-    fund.update(fundamental_snap)
+    # Only merge non-empty fundamental fields; keep snapshot/preheat values when akshare times out.
+    if fundamental_snap:
+        merged_notes = list(fund.get("source_notes") or [])
+        for k, v in (fundamental_snap or {}).items():
+            if k == "source_notes":
+                for n in list(v or []):
+                    s = str(n)
+                    if s and s not in merged_notes:
+                        merged_notes.append(s)
+                continue
+            if k == "fundamental_context_chunks":
+                old_chunks = list(fund.get("fundamental_context_chunks") or [])
+                for c in list(v or []):
+                    cs = str(c)
+                    if cs and cs not in old_chunks:
+                        old_chunks.append(cs)
+                if old_chunks:
+                    fund["fundamental_context_chunks"] = old_chunks
+                continue
+            if v is None:
+                continue
+            if isinstance(v, str) and not v.strip():
+                continue
+            if isinstance(v, list) and not v:
+                continue
+            fund[k] = v
+        if merged_notes:
+            fund["source_notes"] = merged_notes
     emit_agent_event("preheat_step", f"并行计算启动：news+risk_summary，code={code}")
     news: dict[str, Any]
     risk_summary: dict[str, Any]
@@ -1248,6 +1292,39 @@ def _collect_risk_warnings(fund: dict[str, Any], risk_score: int) -> list[str]:
     return warnings
 
 
+def _rewrite_reason_for_compliance(text: str) -> str:
+    s = str(text or "").strip()
+    if not s:
+        return s
+    replacements = {
+        "建议买入": "可作为历史观察样本",
+        "建议卖出": "需结合风险承受能力审慎观察",
+        "强势多头": "历史区间内动量偏强",
+        "中性偏多": "历史信号偏中性至偏强",
+        "看多": "偏强信号",
+        "看空": "偏弱信号",
+        "牛市": "历史上行阶段",
+        "熊市": "历史下行阶段",
+        "适配打分": "匹配度参考",
+        "技术面打分": "技术面观察",
+        "基本面打分": "基本面观察",
+        "风险评分": "风险观察",
+    }
+    out = s
+    for src, dst in replacements.items():
+        out = out.replace(src, dst)
+    if "过往业绩不代表未来表现" not in out:
+        out = out + "；过往业绩不代表未来表现，基金有风险，投资需谨慎。"
+    return out
+
+
+def _rewrite_agent_reasons_for_compliance(reasons: dict[str, str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for k, v in (reasons or {}).items():
+        out[k] = _rewrite_reason_for_compliance(v)
+    return out
+
+
 def node_fundamental(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
     emit_agent_event("fundamental_start", "Fundamental 节点启动")
@@ -1415,40 +1492,9 @@ def node_attribution(state: MAFBState) -> dict[str, Any]:
 
 
 def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
-    profile = state.get("user_profile") or {}
-    fund = state.get("fund_data") or {}
-    risk = int(profile.get("risk_level") or 3)
-    cap = round(min(0.78, 0.52 + risk * 0.05), 3)
-    core_weight = round(min(0.45 + risk * 0.04, 0.65, cap - 0.1), 3)
-    satellite = round(max(0.15, 1 - core_weight - 0.2), 3)
-    cash = round(1 - core_weight - satellite, 3)
-
-    portfolio = [
-        {
-            "code": fund.get("code"),
-            "name": fund.get("name"),
-            "role": "core",
-            "weight": core_weight,
-            "rationale": "核心仓：与 FBTI 推断风险等级相匹配的主基金/ETF。",
-        },
-        {
-            "code": "511010",
-            "name": "国债ETF",
-            "role": "stabilizer",
-            "weight": satellite if risk <= 3 else satellite * 0.6,
-            "rationale": "波动缓冲：用于降低组合波动（演示用固定标的，可替换为货基/短债）。",
-        },
-        {
-            "code": "CASH",
-            "name": "现金管理",
-            "role": "liquidity",
-            "weight": max(cash, 0.05),
-            "rationale": "流动性预留：便于定投与再平衡。",
-        },
-    ]
     return {
-        "proposed_portfolio": portfolio,
-        "compliance_notes": ["资产配置：结构化权重草案（非投资建议，演示）。"],
+        "proposed_portfolio": [],
+        "compliance_notes": ["单基金分析模式：已关闭组合草案输出。"],
     }
 
 
@@ -1456,14 +1502,12 @@ def node_compliance(state: MAFBState) -> dict[str, Any]:
     reasons = state.get("agent_reasons") or {}
     text_blob = " ".join(reasons.values())
     notes: list[str] = []
-    blocked = False
-    reason = ""
+    needs_rewrite = False
 
     for word in _FORBIDDEN:
         if word in text_blob:
-            blocked = True
-            reason = f"命中合规词库：{word}"
-            break
+            notes.append(f"合规提示：命中敏感词（{word}），请人工复核表达。")
+            needs_rewrite = True
 
     fund = state.get("fund_data") or {}
     user_risk = int(state.get("risk_level") or 3)
@@ -1481,22 +1525,24 @@ def node_compliance(state: MAFBState) -> dict[str, Any]:
         notes.append(f"大模型合规审查：compliance_score={llm.compliance_score}。")
         if llm.advisory_notes:
             notes.append(llm.advisory_notes[:500])
-        if not llm.allow_continue:
-            blocked = True
-            reason = reason or "大模型合规审查：不建议继续输出组合草案"
+        if (not llm.allow_continue) or int(llm.compliance_score) < 0:
+            notes.append("合规提示：大模型建议谨慎发布（当前为非拦截模式，结果继续输出）。")
+            needs_rewrite = True
 
-    notes.append("合规审查：已完成禁宣词检测与风险等级错配检测。")
+    if needs_rewrite:
+        notes.append("合规编辑：仅对最终单基金分析输出执行术语中性化改写（中间流程保持原文）。")
+
+    notes.append("合规审查：已完成禁宣词检测与风险等级错配检测（非拦截模式）。")
     return {
-        "is_compliant": not blocked,
-        "blocked_reason": reason,
+        "is_compliant": True,
+        "blocked_reason": "",
         "compliance_notes": notes,
+        "compliance_rewrite_needed": needs_rewrite,
     }
 
 
 def node_voting(state: MAFBState) -> dict[str, Any]:
     scores = dict(state.get("agent_scores") or {})
-    alloc_score = 1 if state.get("is_compliant") else -2
-    scores["allocation"] = alloc_score
 
     weighted = 0.0
     detail: dict[str, Any] = {}
@@ -1514,6 +1560,19 @@ def node_voting(state: MAFBState) -> dict[str, Any]:
     anchor = state.get("fund_data") or {}
     chain = build_reasoning_chain()
     position = build_position_advice_mafb(user_profile)
+    reasons = state.get("agent_reasons") or {}
+    rewrite_needed = bool(state.get("compliance_rewrite_needed"))
+    single_fund_analysis = (
+        "【单基金综合结论】\n"
+        f"- 基本面：{str(reasons.get('fundamental') or '暂无')}\n"
+        f"- 技术面：{str(reasons.get('technical') or '暂无')}\n"
+        f"- 风控：{str(reasons.get('risk') or '暂无')}\n"
+        f"- 业绩与风格归因：{str(reasons.get('attribution') or '暂无')}\n"
+        f"- 画像匹配：{str(reasons.get('profiling') or '暂无')}\n"
+        "【说明】以上由各子智能体（含大模型通道）并行结论聚合，不构成投资建议。"
+    )
+    if rewrite_needed:
+        single_fund_analysis = _rewrite_reason_for_compliance(single_fund_analysis)
 
     final_report = {
         "verdict": "pass",
@@ -1523,12 +1582,13 @@ def node_voting(state: MAFBState) -> dict[str, Any]:
         "user_profile": user_profile,
         "fund": anchor,
         "rag_chunks": state.get("rag_chunks"),
-        "proposed_portfolio": state.get("proposed_portfolio"),
+        "proposed_portfolio": [],
         "performance_style_attribution": anchor.get("performance_style_attribution") or {},
         "top5_recommendations": [],
         "reasoning_chain": chain,
         "position_advice": position,
-        "reasons": state.get("agent_reasons"),
+        "reasons": reasons,
+        "single_fund_analysis": single_fund_analysis,
         "technical_summary": _technical_report_bundle(anchor),
         "technical_retrieval": state.get("technical_retrieval") or {},
         "risk_summary": _risk_report_bundle(anchor),
@@ -1544,7 +1604,7 @@ def node_voting(state: MAFBState) -> dict[str, Any]:
         f"多智能体加权总分 {weighted:.2f}；已输出技术面结构化快照与业绩/风格归因（超额收益来源与风格偏离度）。"
     )
 
-    return {"final_report": final_report, "weighted_total": round(weighted, 3), "agent_scores": {"allocation": alloc_score}}
+    return {"final_report": final_report, "weighted_total": round(weighted, 3)}
 
 
 def route_after_compliance(state: MAFBState) -> str:
@@ -1572,6 +1632,10 @@ def node_blocked(state: MAFBState) -> dict[str, Any]:
         "technical_summary": _technical_report_bundle(anchor),
         "technical_retrieval": state.get("technical_retrieval") or {},
         "risk_summary": _risk_report_bundle(anchor),
+        "single_fund_analysis": (
+            "【单基金综合结论】\n"
+            "当前结果被合规拦截，已暂停对外输出建议性结论。"
+        ),
         "compliance": {
             "is_compliant": False,
             "blocked_reason": state.get("blocked_reason"),

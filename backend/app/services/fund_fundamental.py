@@ -145,7 +145,7 @@ def _akshare_overview_fields(fund_code: str) -> tuple[float | None, str | None, 
     df = None
     saw_timeout = False
     saw_error = False
-    timeout_sec = float(settings.fundamental_mobapi_timeout_sec or 8.0)
+    timeout_sec = float(settings.fundamental_akshare_timeout_sec or 12.0)
     call_attempts = (
         {"symbol": fund_code},
         {"fund": fund_code},
@@ -230,7 +230,7 @@ def _akshare_portfolio_drift(fund_code: str, max_quarters: int) -> tuple[float |
     except Exception:
         return None, 0
 
-    timeout_sec = float(settings.fundamental_mobapi_timeout_sec or 8.0)
+    timeout_sec = float(settings.fundamental_akshare_timeout_sec or 12.0)
     _, df = _run_with_timeout(ak.fund_portfolio_hold_em, symbol=fund_code, timeout_sec=timeout_sec)
     if df is None:
         _, df = _run_with_timeout(ak.fund_portfolio_hold_em, code=fund_code, timeout_sec=timeout_sec)
@@ -280,7 +280,7 @@ def _akshare_holdings_features(
         import akshare as ak  # type: ignore
     except Exception:
         return None, None, None, [], 0, ["akshare_import_failed"]
-    timeout_sec = float(settings.fundamental_mobapi_timeout_sec or 8.0)
+    timeout_sec = float(settings.fundamental_akshare_timeout_sec or 12.0)
     saw_timeout = False
     saw_error = False
     status, df = _run_with_timeout(ak.fund_portfolio_hold_em, symbol=fund_code, timeout_sec=timeout_sec)
@@ -290,6 +290,21 @@ def _akshare_holdings_features(
         saw_error = True
     if df is None:
         status, df = _run_with_timeout(ak.fund_portfolio_hold_em, code=fund_code, timeout_sec=timeout_sec)
+        if status == "timeout":
+            saw_timeout = True
+        elif status == "error":
+            saw_error = True
+    # one retry with a slightly larger timeout, to reduce transient timeout rate
+    if df is None:
+        retry_timeout = min(30.0, timeout_sec * 1.8)
+        status, df = _run_with_timeout(ak.fund_portfolio_hold_em, symbol=fund_code, timeout_sec=retry_timeout)
+        if status == "timeout":
+            saw_timeout = True
+        elif status == "error":
+            saw_error = True
+    if df is None:
+        retry_timeout = min(30.0, timeout_sec * 1.8)
+        status, df = _run_with_timeout(ak.fund_portfolio_hold_em, code=fund_code, timeout_sec=retry_timeout)
         if status == "timeout":
             saw_timeout = True
         elif status == "error":
@@ -361,6 +376,71 @@ def _akshare_holdings_features(
     return eq_ratio, top10, top5, tops, quarter_samples, ["akshare_holdings_ok", *extra_note]
 
 
+def _akshare_manager_quality_score(fund_code: str) -> tuple[float | None, float | None, list[str]]:
+    """
+    Rule-based manager score reconstruction:
+    score ~= 0.4 * tenure_years + 0.6 * annual_return.
+    Then clamp to [0, 5].
+    """
+    if not bool(settings.fundamental_use_akshare):
+        return None, None, ["akshare_manager_disabled"]
+    try:
+        import akshare as ak  # type: ignore
+    except Exception:
+        return None, None, ["akshare_manager_import_failed"]
+
+    timeout_sec = float(settings.fundamental_akshare_timeout_sec or 12.0)
+    notes: list[str] = []
+    status, df = _run_with_timeout(ak.fund_manager_history_em, symbol=fund_code, timeout_sec=timeout_sec)
+    if df is None:
+        status2, df = _run_with_timeout(ak.fund_manager_history_em, fund=fund_code, timeout_sec=timeout_sec)
+        status = status2 if status == "ok" else status
+    if df is None or getattr(df, "empty", True):
+        if status == "timeout":
+            return None, None, ["akshare_manager_timeout"]
+        if status == "error":
+            return None, None, ["akshare_manager_error"]
+        return None, None, ["akshare_manager_empty"]
+
+    cols = list(df.columns)
+    tenure_col = next((c for c in cols if "任职天数" in str(c) or "任职时长" in str(c)), None)
+    ann_col = next((c for c in cols if "年化" in str(c) and "回报" in str(c)), None)
+    ret_col = next((c for c in cols if "任职回报" in str(c) or ("收益" in str(c) and "任职" in str(c))), None)
+    if tenure_col is None and ann_col is None and ret_col is None:
+        return None, None, ["akshare_manager_schema_unexpected"]
+
+    row0 = None
+    try:
+        row0 = df.iloc[0]
+    except Exception:
+        return None, None, ["akshare_manager_row_parse_failed"]
+    if row0 is None:
+        return None, None, ["akshare_manager_row_parse_failed"]
+
+    tenure_days = _to_float(row0.get(tenure_col)) if tenure_col else None
+    annual = _to_float(row0.get(ann_col)) if ann_col else None
+    if annual is None and ret_col is not None and tenure_days and tenure_days > 30:
+        total_ret = _to_float(row0.get(ret_col))
+        if total_ret is not None:
+            total_ret = total_ret / 100.0 if total_ret > 1 else total_ret
+            annual = (1.0 + total_ret) ** (365.0 / max(30.0, tenure_days)) - 1.0
+    if annual is not None and annual > 1.0:
+        annual = annual / 100.0
+
+    years = (tenure_days / 365.0) if isinstance(tenure_days, (int, float)) and tenure_days > 0 else None
+    if years is None and annual is None:
+        return None, None, ["akshare_manager_insufficient_fields"]
+
+    score_raw = 0.0
+    if years is not None:
+        score_raw += min(2.5, max(0.0, years * 0.4))
+    if annual is not None:
+        score_raw += min(2.5, max(-0.5, annual * 6.0))
+    score = float(max(0.0, min(5.0, score_raw)))
+    notes.append("akshare_manager_score_ok")
+    return score, annual, notes
+
+
 def fetch_fund_fundamental_snapshot(fund_code: str) -> dict[str, Any]:
     code = (fund_code or "").strip()
     if not re.fullmatch(r"\d{6}", code):
@@ -397,6 +477,8 @@ def fetch_fund_fundamental_snapshot(fund_code: str) -> dict[str, Any]:
 
     eq_ratio, top10, top5, top_holdings, qn_hold, notes_holdings = _akshare_holdings_features(code)
     notes.extend(notes_holdings)
+    manager_score, manager_ret, notes_mgr = _akshare_manager_quality_score(code)
+    notes.extend(notes_mgr)
 
     drift, qn_drift = _akshare_portfolio_drift(code, int(settings.fundamental_akshare_quarters))
     qn = max(int(qn_hold or 0), int(qn_drift or 0))
@@ -415,6 +497,8 @@ def fetch_fund_fundamental_snapshot(fund_code: str) -> dict[str, Any]:
         chunks.append(f"AUM Snapshot: latest reported size about {aum_billion:.2f} bn CNY.")
     if manager_name:
         chunks.append(f"Manager Snapshot: {manager_name}.")
+    if manager_score is not None:
+        chunks.append(f"Manager Quality Score (rule): {manager_score:.2f}.")
     if top10 is not None:
         lv = "高集中" if top10 >= 0.5 else ("中集中" if top10 >= 0.3 else "低集中")
         chunks.append(f"Holding Concentration: top10={top10:.2%}, level={lv}.")

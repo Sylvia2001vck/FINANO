@@ -168,6 +168,8 @@ def infer_metaphysics_finance_intent_with_ai(
     arch: dict[str, Any],
     natural_intent: str = "",
     mood: str = "",
+    bazi_text: str = "",
+    bazi_analysis: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], str]:
     system = (
         "你是玄学到金融策略翻译器。仅输出一个合法 JSON："
@@ -180,6 +182,8 @@ def infer_metaphysics_finance_intent_with_ai(
 人格标签：{json.dumps(list(arch.get('tags') or []), ensure_ascii=False)}
 用户自然语言意图：{natural_intent or "（未提供）"}
 用户当前情绪：{mood or "（未提供）"}
+用户八字文本：{bazi_text or "（未提供）"}
+八字与当日解读：{json.dumps(bazi_analysis or {}, ensure_ascii=False)}
 请把“玄学/情绪描述”翻译成金融可执行意图 JSON。"""
     parsed, why = _invoke_json_llm(system, user, require_funds=False)
     if parsed is None or why != "ok":
@@ -194,6 +198,76 @@ def infer_metaphysics_finance_intent_with_ai(
     }
     if not out["mapped_sectors"]:
         out["mapped_sectors"] = _default_intent_from_arch(arch, wuxing)["mapped_sectors"]
+    out["confidence"] = max(0.0, min(1.0, out["confidence"]))
+    return out, "ok"
+
+
+def infer_bazi_today_analysis_with_ai(
+    *,
+    bazi_text: str,
+    time_label: str,
+    natural_intent: str = "",
+    mood: str = "",
+) -> tuple[dict[str, Any], str]:
+    """
+    阶段0：先用八字 + 当日时间做自然语言解析，再供后续金融意图翻译与策略匹配使用。
+    """
+    clean_bazi = (bazi_text or "").strip()
+    if not clean_bazi:
+        return {
+            "bazi_summary": "",
+            "today_signal": "neutral",
+            "risk_tone": "balanced",
+            "sector_hints": [],
+            "confidence": 0.0,
+            "note": "bazi_empty",
+        }, "bazi_empty"
+
+    system = (
+        "你是八字与金融语义翻译助手。仅输出合法 JSON："
+        "bazi_summary(字符串), today_signal(仅允许 bullish|neutral|defensive), "
+        "risk_tone(仅允许 aggressive|balanced|conservative), "
+        "sector_hints(字符串数组), confidence(0~1 数字), note(字符串)。"
+        "不得承诺收益。"
+    )
+    user = f"""用户八字：{clean_bazi}
+当前时间：{time_label}
+用户自然语言意图：{natural_intent or "（未提供）"}
+用户情绪：{mood or "（未提供）"}
+请输出结构化 JSON。"""
+    parsed, why = _invoke_json_llm(system, user, require_funds=False)
+    if parsed is None or why != "ok":
+        low = clean_bazi
+        hints: list[str] = []
+        if any(x in low for x in ["木", "火"]):
+            hints.extend(["成长", "科技"])
+        if any(x in low for x in ["金", "土"]):
+            hints.extend(["价值", "红利", "宽基"])
+        if any(x in low for x in ["水"]):
+            hints.extend(["均衡", "低波"])
+        if not hints:
+            hints = ["宽基", "行业轮动"]
+        return {
+            "bazi_summary": f"基于八字文本（{clean_bazi[:24]}）的规则解读。",
+            "today_signal": "neutral",
+            "risk_tone": "balanced",
+            "sector_hints": hints[:4],
+            "confidence": 0.52,
+            "note": "rule_fallback",
+        }, why
+
+    out = {
+        "bazi_summary": str(parsed.get("bazi_summary") or "").strip() or f"八字文本：{clean_bazi[:24]}",
+        "today_signal": str(parsed.get("today_signal") or "neutral").strip().lower(),
+        "risk_tone": str(parsed.get("risk_tone") or "balanced").strip().lower(),
+        "sector_hints": list(parsed.get("sector_hints") or [])[:6],
+        "confidence": float(parsed.get("confidence") or 0.6),
+        "note": str(parsed.get("note") or "ok"),
+    }
+    if out["today_signal"] not in ("bullish", "neutral", "defensive"):
+        out["today_signal"] = "neutral"
+    if out["risk_tone"] not in ("aggressive", "balanced", "conservative"):
+        out["risk_tone"] = "balanced"
     out["confidence"] = max(0.0, min(1.0, out["confidence"]))
     return out, "ok"
 
@@ -537,17 +611,31 @@ def iter_fbti_ai_selection_sse_events(
     arch: dict[str, Any],
     natural_intent: str = "",
     mood: str = "",
+    bazi_text: str = "",
 ):
     """同步生成器：依次 yield 阶段 dict，最后 yield 与 run_fbti_ai_selection 相同结构的 result dict。"""
-    yield {"event": "stage", "node": "intent", "label": "玄学语义 -> 金融意图翻译…"}
+    yield {"event": "stage", "node": "bazi", "label": "八字 + 当日语义解读…"}
+    bazi_payload, why_bazi = infer_bazi_today_analysis_with_ai(
+        bazi_text=str(bazi_text or ""),
+        time_label=time_label,
+        natural_intent=natural_intent,
+        mood=mood,
+    )
+    if why_bazi != "ok":
+        logger.info("Bazi 解读阶段回退规则 (why=%s)", why_bazi)
+    yield {"event": "bazi", "data": bazi_payload}
+
+    yield {"event": "stage", "node": "intent", "label": "八字解读 -> 金融意图翻译…"}
     intent_payload, why_intent = infer_metaphysics_finance_intent_with_ai(
         fbti_code=fbti_code,
         fbti_name=fbti_name,
         wuxing=wuxing,
         time_label=time_label,
         arch=arch,
-        natural_intent=natural_intent,
+        natural_intent=(natural_intent or "") + f"；八字解读摘要：{str(bazi_payload.get('bazi_summary') or '')}",
         mood=mood,
+        bazi_text=str(bazi_text or ""),
+        bazi_analysis=bazi_payload,
     )
     if why_intent != "ok":
         logger.info("FBTI 意图翻译阶段回退规则 (why=%s)", why_intent)
@@ -603,6 +691,7 @@ def iter_fbti_ai_selection_sse_events(
     base_reason = str(result.get("reason") or "").strip()
     strategy_text = f"策略：factors={strategy_bundle.get('factors')}, alpha={strategy_bundle.get('alpha_models')}。"
     result["intent"] = intent_payload
+    result["bazi_analysis"] = bazi_payload
     result["strategy_bundle"] = strategy_bundle
     result["reason"] = f"{prefix} {strategy_text} {base_reason}".strip()
     yield {"event": "result", "data": result}
@@ -617,6 +706,7 @@ def run_fbti_ai_selection(
     arch: dict[str, Any],
     natural_intent: str = "",
     mood: str = "",
+    bazi_text: str = "",
 ) -> dict[str, Any]:
     """
     对外入口：偏好 LLM → 随机 400 → 规则 Top20 → 选股 LLM Top5。
@@ -631,6 +721,7 @@ def run_fbti_ai_selection(
         arch=arch,
         natural_intent=natural_intent,
         mood=mood,
+        bazi_text=bazi_text,
     ):
         if isinstance(ev, dict) and ev.get("event") == "result" and isinstance(ev.get("data"), dict):
             last = ev["data"]

@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     hot_cache_ttl_sec: int = Field(default=3900, ge=60, le=172800, alias="HOT_CACHE_TTL_SEC")
     # 基本面双数据源：天天基金移动端 + Akshare（可选）
     fundamental_mobapi_timeout_sec: float = Field(default=8.0, ge=2.0, le=30.0, alias="FUNDAMENTAL_MOBAPI_TIMEOUT_SEC")
+    fundamental_akshare_timeout_sec: float = Field(default=12.0, ge=2.0, le=45.0, alias="FUNDAMENTAL_AKSHARE_TIMEOUT_SEC")
     fundamental_use_akshare: bool = Field(default=True, alias="FUNDAMENTAL_USE_AKSHARE")
     fundamental_akshare_quarters: int = Field(default=4, ge=2, le=12, alias="FUNDAMENTAL_AKSHARE_QUARTERS")
     # 基金日快照（全量/大批量）定时落库：优先供 preheat 读取，实时接口仅作增量覆盖

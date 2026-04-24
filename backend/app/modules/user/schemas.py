@@ -24,6 +24,7 @@ class UserRead(BaseModel):
     updated_at: datetime
     mbti: str | None = None
     birth_date: date | None = None
+    birth_time_slot: str | None = None
     layout_facing: str | None = None
     risk_preference: int | None = None
     fbti_profile: str | None = None

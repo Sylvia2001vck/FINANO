@@ -9,6 +9,10 @@ class AgentProfileSave(BaseModel):
     """保存 MAFB 用的命理个性化画像（落库 + 返回结构化特征）。"""
 
     user_birth: str = Field(description="ISO 日期 YYYY-MM-DD")
+    birth_time_slot: str | None = Field(
+        default=None,
+        description="出生时段编码：ZI/CHOU/YIN/MAO/CHEN/SI/WU/WEI/SHEN/YOU/XU/HAI",
+    )
     user_mbti: str = Field(min_length=4, max_length=4)
     risk_preference: int | None = Field(default=None, ge=1, le=5, description="用户自报风险 1-5")
 

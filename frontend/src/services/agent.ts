@@ -50,6 +50,7 @@ export interface LLMProbeData {
 
 export interface AgentProfilePayload {
   user_birth: string;
+  birth_time_slot?: string;
   user_mbti: string;
   risk_preference?: number | null;
 }

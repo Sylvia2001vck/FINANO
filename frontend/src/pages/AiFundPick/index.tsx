@@ -3,6 +3,7 @@ import { Button, Card, Input, List, Space, Switch, Table, Tag, Typography, messa
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
+import { getAgentProfile } from "../../services/agent";
 import {
   getFbtiProfile,
   postFbtiAiIntentPreview,
@@ -33,6 +34,7 @@ function WuxingBadge({ text }: { text: string }) {
 export default function AiFundPickPage() {
   const [loading, setLoading] = useState(true);
   const [hasFbti, setHasFbti] = useState(false);
+  const [hasBirthProfile, setHasBirthProfile] = useState(false);
   const [ai, setAi] = useState<FbtiSelectResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiStage, setAiStage] = useState<string>("");
@@ -44,12 +46,24 @@ export default function AiFundPickPage() {
   const [stageLog, setStageLog] = useState<string[]>([]);
 
   useEffect(() => {
+    let done = 0;
+    const markDone = () => {
+      done += 1;
+      if (done >= 2) setLoading(false);
+    };
     void getFbtiProfile()
       .then((d) => {
         setHasFbti(Boolean(d.fbti_profile));
       })
       .catch(() => setHasFbti(false))
-      .finally(() => setLoading(false));
+      .finally(markDone);
+    void getAgentProfile()
+      .then((res) => {
+        const raw = res?.saved_fields as Record<string, unknown> | null | undefined;
+        setHasBirthProfile(Boolean(raw?.birth_date));
+      })
+      .catch(() => setHasBirthProfile(false))
+      .finally(markDone);
   }, []);
 
   const buildPayload = () => ({
@@ -81,6 +95,8 @@ export default function AiFundPickPage() {
           setAiStage(label);
           setStageLog((prev) => [...prev, label].slice(-12));
         },
+        onBazi: (payload) =>
+          setPreview((prev) => ({ ...(prev || { intent: {}, strategy_bundle: {}, need_confirm: true }), bazi_analysis: payload })),
         onIntent: (payload) => setPreview((prev) => ({ ...(prev || { strategy_bundle: {}, need_confirm: true }), intent: payload })),
         onStrategy: (payload) => setPreview((prev) => ({ ...(prev || { intent: {}, need_confirm: true }), strategy_bundle: payload })),
       }, buildPayload());
@@ -99,26 +115,15 @@ export default function AiFundPickPage() {
     return <Typography.Paragraph>加载中…</Typography.Paragraph>;
   }
 
-  if (!hasFbti) {
-    return (
-      <div className="page-stack">
-        <Typography.Title level={3}>AI娱乐选基</Typography.Title>
-        <PageCard title="需要先完成 FBTI">
-          <Typography.Paragraph>
-            本功能根据你的金融人格与基金目录做趣味向语义筛选。请先到「
-            <Link to="/user-community#fbti">用户与社区 · FBTI 画像</Link>」完成测试。
-          </Typography.Paragraph>
-        </PageCard>
-      </div>
-    );
-  }
+  const canRun = hasFbti || hasBirthProfile;
 
   return (
     <div className="page-stack">
       <Typography.Title level={3}>AI娱乐选基</Typography.Title>
       <Typography.Paragraph type="secondary">
-        多阶段：偏好归纳（含五行娱乐维度）→ 随机抽样与规则 Top20 → 大模型终筛至多 5 只；无 Key 时规则兜底。
-        与多智能体控制台（MAFB）解耦；「个性化 TOP5」为八字五行流年与统计融合的趣味展示，不构成投资建议。
+        一键流程：自动读取用户档案中的生日/出生时段推算八字，再做今日时势解读 → 金融意图翻译 → 策略关联 → 基金终筛；
+        若已完成 FBTI，会自动叠加人格画像。
+        该模块与 MAFB 解耦，仅用于自然语言策略设计与趣味向选基，不构成投资建议。
       </Typography.Paragraph>
       <PageCard title="一键生成（娱乐向）">
         <Space direction="vertical" style={{ width: "100%" }}>
@@ -140,9 +145,19 @@ export default function AiFundPickPage() {
               预览意图与策略
             </Button>
           </Space>
-          <Button type="primary" icon={<BulbOutlined />} loading={aiLoading} onClick={() => void runAi()}>
+          <Button type="primary" icon={<BulbOutlined />} loading={aiLoading} disabled={!canRun} onClick={() => void runAi()}>
             开始流式执行
           </Button>
+          {!hasFbti ? (
+            <Typography.Text type="secondary">
+              未检测到 FBTI 画像：会仅按生日/出生时段推算八字执行；如需叠加人格，请先完成 <Link to="/user-community#fbti">FBTI 测试</Link>。
+            </Typography.Text>
+          ) : null}
+          {!hasBirthProfile ? (
+            <Typography.Text type="warning">
+              尚未在 <Link to="/user-community#profile">用户档案</Link> 中保存生日信息（可选出生时段），暂无法自动推算八字。
+            </Typography.Text>
+          ) : null}
           {aiLoading && aiStage ? <Typography.Text type="secondary">{aiStage}</Typography.Text> : null}
           {stageLog.length ? (
             <List
@@ -157,6 +172,9 @@ export default function AiFundPickPage() {
           <Card size="small" style={{ marginTop: 16 }} title="意图与策略预览">
             <Typography.Paragraph style={{ marginBottom: 8 }}>
               need_confirm: <Tag color={preview.need_confirm ? "gold" : "green"}>{String(preview.need_confirm)}</Tag>
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>
+              八字解读：{JSON.stringify(preview.bazi_analysis || {}, null, 2)}
             </Typography.Paragraph>
             <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>
               意图：{JSON.stringify(preview.intent || {}, null, 2)}

@@ -16,6 +16,7 @@ class User(Base, TimestampMixin):
 
     mbti: Mapped[str | None] = mapped_column(String(4), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    birth_time_slot: Mapped[str | None] = mapped_column(String(16), nullable=True)
     layout_facing: Mapped[str | None] = mapped_column(String(1), nullable=True)
     risk_preference: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

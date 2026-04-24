@@ -6,6 +6,7 @@ export interface User {
   updated_at: string;
   mbti?: string | null;
   birth_date?: string | null;
+  birth_time_slot?: string | null;
   layout_facing?: string | null;
   risk_preference?: number | null;
   fbti_profile?: string | null;

@@ -45,6 +45,7 @@ class MAFBState(TypedDict, total=False):
     proposed_portfolio: list[dict[str, Any]]
 
     compliance_notes: Annotated[list[str], _merge_str_list]
+    compliance_rewrite_needed: bool
 
     is_compliant: bool
     blocked_reason: str

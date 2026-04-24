@@ -665,7 +665,7 @@ export default function MAFBPage() {
   };
 
   const scores = (report?.scores as Record<string, number> | undefined) || {};
-  const portfolio = (report?.proposed_portfolio as Record<string, unknown>[] | undefined) || [];
+  const singleFundAnalysis = String(report?.single_fund_analysis ?? "");
   const userProf = report?.user_profile as Record<string, unknown> | undefined;
   const chain = (report?.reasoning_chain as string[] | undefined) || [];
   const position = report?.position_advice as Record<string, unknown> | undefined;
@@ -1347,19 +1347,16 @@ export default function MAFBPage() {
             </Card>
             <Typography.Title level={5}>可解释推理链（流水线说明）</Typography.Title>
             <List size="small" bordered dataSource={chain} renderItem={(item) => <List.Item>{item}</List.Item>} />
-            <Typography.Title level={5}>组合草案</Typography.Title>
-            <Table
-              size="small"
-              rowKey={(row) => String(row.code)}
-              dataSource={portfolio}
-              columns={[
-                { title: "代码", dataIndex: "code" },
-                { title: "名称", dataIndex: "name" },
-                { title: "角色", dataIndex: "role" },
-                { title: "权重", dataIndex: "weight" },
-                { title: "说明", dataIndex: "rationale" }
-              ]}
-            />
+            <Typography.Title level={5}>单基金大模型分析</Typography.Title>
+            <Card size="small">
+              {singleFundAnalysis ? (
+                <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>
+                  {singleFundAnalysis}
+                </Typography.Paragraph>
+              ) : (
+                <Typography.Text type="secondary">暂无单基金分析结论。</Typography.Text>
+              )}
+            </Card>
             <Typography.Title level={5}>摘要与投教声明</Typography.Title>
             <Card size="small">
               <Typography.Paragraph>{String(report.summary ?? "")}</Typography.Paragraph>

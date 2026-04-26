@@ -885,9 +885,27 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
 
         try:
             fundamental_snap = fut_fundamental.result()
-        except Exception:
+        except Exception as e:
+            err_cls = type(e).__name__
+            err_msg = str(e).strip() or "unknown_error"
+            err_low = err_msg.lower()
+            if "timeout" in err_low:
+                err_hint = "timeout"
+            elif "schema" in err_low or "column" in err_low or "keyerror" in err_low:
+                err_hint = "schema_error"
+            else:
+                err_hint = "runtime_error"
+            err_detail = f"{err_cls}:{err_msg}"[:240]
+            emit_agent_event(
+                "fundamental_fetch_error",
+                f"基本面快照异常：hint={err_hint}, detail={err_detail}",
+            )
             fundamental_snap = {
-                "source_notes": ["fundamental_fetch_failed"],
+                "source_notes": [
+                    "fundamental_fetch_failed",
+                    f"fundamental_fetch_error_hint={err_hint}",
+                    f"fundamental_fetch_error={err_detail}",
+                ],
                 "fundamental_context_chunks": [],
             }
         emit_agent_event("preheat_step", f"基本面快照完成：code={code}")

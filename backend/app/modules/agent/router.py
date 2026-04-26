@@ -11,14 +11,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.agent.fund_catalog import get_fund_by_code, list_funds_catalog_sample, list_funds_catalog_window, static_demo_pool_size
+from app.agent.fund_catalog import list_funds_catalog_sample, list_funds_catalog_window, static_demo_pool_size
 from app.agent.kline_retriever import get_shadow_segments_for_matches, retrieve_technical_matches
 from app.services.similar_funds import similar_funds
 from app.agent.graph import get_mafb_state_after_stream, invoke_mafb, stream_mafb_stages
 from app.agent.task_registry import create_mafb_task, get_mafb_task
 from app.agent.llm_client import probe_qwen_llm
 from app.agent.profiling import build_user_profile
-from app.agent.top5 import build_top5_personalized_entertainment
 from app.core.exceptions import APIException
 from app.core.responses import success_response
 from app.core.security import get_current_user
@@ -485,23 +484,6 @@ def _fbti_time_label() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M 本地时间")
 
 
-def _enrich_fbti_result_with_personalized(user: User, result: dict) -> dict:
-    """在 reason+funds 上追加 personalized_top5（与同步接口一致）。"""
-    out = dict(result)
-    bd = user.birth_date.isoformat() if user.birth_date else "1990-01-01"
-    mt = (user.mbti or "INTJ").upper()
-    prof_ent = build_user_profile(bd, mt, None, user.risk_preference)
-    anchor_code = ""
-    funds = out.get("funds") or []
-    if funds:
-        anchor_code = str(funds[0].get("code") or "").strip()
-    anchor = get_fund_by_code(anchor_code) if anchor_code else get_fund_by_code("510300")
-    if not anchor:
-        anchor = {}
-    out["personalized_top5"] = build_top5_personalized_entertainment(prof_ent, anchor)
-    return out
-
-
 def _fbti_select_context(
     payload: FbtiSelectBody,
     current_user: User,
@@ -542,10 +524,7 @@ def fbti_ai_select_funds(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    FBTI + 五行娱乐融合：偏好 JSON → 随机样本 → 规则 Top20 → 模型终筛至多 5 只；
-    另附「个性化 TOP5」（五行/流年/统计）仅供趣味展示，与 MAFB 专业流水线解耦。
-    """
+    """FBTI + 五行娱乐融合：偏好 JSON → 随机样本 → 规则 Top20 → 模型终筛至多 5 只。"""
     user, arch, wx, time_label = _fbti_select_context(payload, current_user, db)
     bazi_text = _resolve_bazi_text(payload, user)
     result = dict(
@@ -560,7 +539,6 @@ def fbti_ai_select_funds(
             bazi_text=bazi_text,
         )
     )
-    result = _enrich_fbti_result_with_personalized(user, result)
     return success_response(data=result, message="FBTI AI 选股完成")
 
 
@@ -630,8 +608,7 @@ def fbti_ai_select_funds_stream(
                 bazi_text=bazi_text,
             ):
                 if ev.get("event") == "result" and isinstance(ev.get("data"), dict):
-                    full = _enrich_fbti_result_with_personalized(user, ev["data"])
-                    yield f"data: {json.dumps({'event': 'result', 'data': full}, ensure_ascii=False, default=str)}\n\n"
+                    yield f"data: {json.dumps({'event': 'result', 'data': ev['data']}, ensure_ascii=False, default=str)}\n\n"
                 else:
                     yield f"data: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
         except Exception as e:  # noqa: BLE001

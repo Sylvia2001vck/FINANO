@@ -85,7 +85,12 @@ def _invoke_json_llm(
         {"role": "user", "content": user},
     ]
     try:
-        raw = _llm._invoke_finance_llm(messages, user)
+        raw = _llm._invoke_finance_llm(
+            messages,
+            user,
+            agent_key="fbti",
+            force_model=(settings.fbti_llm_model or "qwen-plus"),
+        )
     except Exception:
         logger.exception("FBTI AI 选股：_invoke_finance_llm 异常")
         return None, "llm_exception"

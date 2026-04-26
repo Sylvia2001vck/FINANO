@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, timedelta
 from hashlib import sha256
 from typing import Any
@@ -283,6 +284,17 @@ def _llm_replay_analysis(
     matched_trades: list[ReplayMatchedTrade],
     matched_notes: list[ReplayMatchedNote],
 ) -> tuple[str, list[str]]:
+    def _extract_json_object(text: str) -> dict[str, Any] | None:
+        s = str(text or "").strip()
+        m = re.search(r"\{[\s\S]*\}", s)
+        if not m:
+            return None
+        try:
+            out = json.loads(m.group())
+            return out if isinstance(out, dict) else None
+        except Exception:
+            return None
+
     if not settings.dashscope_api_key or dashscope is None:
         if route == "history_compare":
             msg = "历史存在相似样本：建议优先复盘当时执行纪律与情绪变化，先验证是否重复同类偏差，再决定是否加减仓。"
@@ -310,7 +322,7 @@ def _llm_replay_analysis(
     )
     try:
         resp = dashscope.Generation.call(
-            model=settings.dashscope_finance_model,
+            model=(settings.replay_llm_model or "qwen-plus"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -325,7 +337,11 @@ def _llm_replay_analysis(
             suggestions = [str(x) for x in (content.get("suggestions") or []) if str(x).strip()]
             if analysis:
                 return analysis, suggestions[:3]
-        parsed = json.loads(content) if isinstance(content, str) else {}
+        parsed = (json.loads(content) if isinstance(content, str) else {}) or {}
+        if not isinstance(parsed, dict):
+            parsed = {}
+        if not parsed and isinstance(content, str):
+            parsed = _extract_json_object(content) or {}
         analysis = str(parsed.get("analysis") or "").strip()
         suggestions = [str(x) for x in (parsed.get("suggestions") or []) if str(x).strip()]
         if analysis:

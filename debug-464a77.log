@@ -358,3 +358,40 @@
 {"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:80", "message": "bootstrap_fund_snapshot_start", "data": {}, "timestamp": 1777014732566}
 {"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:84", "message": "bootstrap_fund_snapshot_skipped_sync", "data": {}, "timestamp": 1777014732568}
 {"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:97", "message": "lifespan_ready_before_yield", "data": {"hot_scheduler": true, "fund_scheduler": true}, "timestamp": 1777014732762}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:58", "message": "lifespan_start", "data": {"database_url_prefix": "sqlite", "catalog_mode": "eastmoney_full"}, "timestamp": 1777106893325}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H2", "location": "backend/app/main.py:67", "message": "metadata_create_all_done", "data": {}, "timestamp": 1777106893349}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:73", "message": "bootstrap_hot_news_start", "data": {}, "timestamp": 1777106893375}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:77", "message": "bootstrap_hot_news_done", "data": {}, "timestamp": 1777106893437}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:80", "message": "bootstrap_fund_snapshot_start", "data": {}, "timestamp": 1777106893439}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:84", "message": "bootstrap_fund_snapshot_skipped_sync", "data": {}, "timestamp": 1777106893442}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:97", "message": "lifespan_ready_before_yield", "data": {"hot_scheduler": true, "fund_scheduler": true}, "timestamp": 1777106893671}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H3", "location": "backend/app/main.py:104", "message": "lifespan_shutdown_start", "data": {}, "timestamp": 1777107229814}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:58", "message": "lifespan_start", "data": {"database_url_prefix": "sqlite", "catalog_mode": "eastmoney_full"}, "timestamp": 1777107248962}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H2", "location": "backend/app/main.py:67", "message": "metadata_create_all_done", "data": {}, "timestamp": 1777107248984}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:73", "message": "bootstrap_hot_news_start", "data": {}, "timestamp": 1777107248995}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:77", "message": "bootstrap_hot_news_done", "data": {}, "timestamp": 1777107249017}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:80", "message": "bootstrap_fund_snapshot_start", "data": {}, "timestamp": 1777107249020}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:84", "message": "bootstrap_fund_snapshot_skipped_sync", "data": {}, "timestamp": 1777107249023}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:97", "message": "lifespan_ready_before_yield", "data": {"hot_scheduler": true, "fund_scheduler": true}, "timestamp": 1777107249242}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:58", "message": "lifespan_start", "data": {"database_url_prefix": "sqlite", "catalog_mode": "eastmoney_full"}, "timestamp": 1777165156153}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H2", "location": "backend/app/main.py:67", "message": "metadata_create_all_done", "data": {}, "timestamp": 1777165156179}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:73", "message": "bootstrap_hot_news_start", "data": {}, "timestamp": 1777165156188}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:77", "message": "bootstrap_hot_news_done", "data": {}, "timestamp": 1777165156314}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:80", "message": "bootstrap_fund_snapshot_start", "data": {}, "timestamp": 1777165156316}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:84", "message": "bootstrap_fund_snapshot_skipped_sync", "data": {}, "timestamp": 1777165156318}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:97", "message": "lifespan_ready_before_yield", "data": {"hot_scheduler": true, "fund_scheduler": true}, "timestamp": 1777165153860}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H3", "location": "backend/app/main.py:104", "message": "lifespan_shutdown_start", "data": {}, "timestamp": 1777166184412}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:58", "message": "lifespan_start", "data": {"database_url_prefix": "sqlite", "catalog_mode": "eastmoney_full"}, "timestamp": 1777166213756}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H2", "location": "backend/app/main.py:67", "message": "metadata_create_all_done", "data": {}, "timestamp": 1777166213784}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:73", "message": "bootstrap_hot_news_start", "data": {}, "timestamp": 1777166213797}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:77", "message": "bootstrap_hot_news_done", "data": {}, "timestamp": 1777166213877}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:80", "message": "bootstrap_fund_snapshot_start", "data": {}, "timestamp": 1777166213880}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:84", "message": "bootstrap_fund_snapshot_skipped_sync", "data": {}, "timestamp": 1777166213884}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:97", "message": "lifespan_ready_before_yield", "data": {"hot_scheduler": true, "fund_scheduler": true}, "timestamp": 1777166215735}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:58", "message": "lifespan_start", "data": {"database_url_prefix": "sqlite", "catalog_mode": "eastmoney_full"}, "timestamp": 1777179435065}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H2", "location": "backend/app/main.py:67", "message": "metadata_create_all_done", "data": {}, "timestamp": 1777179435091}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:73", "message": "bootstrap_hot_news_start", "data": {}, "timestamp": 1777179435103}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:77", "message": "bootstrap_hot_news_done", "data": {}, "timestamp": 1777179435180}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:80", "message": "bootstrap_fund_snapshot_start", "data": {}, "timestamp": 1777179435183}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:84", "message": "bootstrap_fund_snapshot_skipped_sync", "data": {}, "timestamp": 1777179435185}
+{"sessionId": "464a77", "runId": "pre-fix", "hypothesisId": "H1", "location": "backend/app/main.py:97", "message": "lifespan_ready_before_yield", "data": {"hot_scheduler": true, "fund_scheduler": true}, "timestamp": 1777179438365}

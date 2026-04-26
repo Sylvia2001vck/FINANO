@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     finance_model_name: str = Field(default="", alias="FINANCE_MODEL_NAME")
     # 回退：DashScope 模型名（与 FINANCE_MODEL_NAME 二选一即可）
     qwen_finance_model: str = Field(default="qwen-plus", alias="QWEN_FINANCE_MODEL")
+    # 交易/复盘链路固定模型（默认 qwen-plus，避免跟随全局升级到 qwen3.*）
+    replay_llm_model: str = Field(default="qwen-plus", alias="REPLAY_LLM_MODEL")
+    # AI 娱乐选基链路固定模型（默认 qwen-plus，避免跟随全局升级到 qwen3.*）
+    fbti_llm_model: str = Field(default="qwen-plus", alias="FBTI_LLM_MODEL")
     # MAFB 推理模式：auto=先云端后本地；cloud_only；local_only（无网演示）
     mafb_llm_mode: str = "auto"
     # 并行打分智能体（基本面/技术面/风控）单次 LLM 总等待上限（秒），超时走规则引擎，避免卡死

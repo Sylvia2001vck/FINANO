@@ -45,17 +45,6 @@ export async function getFbtiProfile() {
   return response.data.data;
 }
 
-export interface FbtiPersonalizedTop5Row {
-  rank: number;
-  code: string;
-  name: string;
-  track: string;
-  composite_score: number;
-  reason_mingli_structured: string;
-  reason_finance: string;
-  is_anchor?: boolean;
-}
-
 export interface FbtiSelectResponse {
   reason: string;
   funds: Array<{
@@ -64,8 +53,6 @@ export interface FbtiSelectResponse {
     wuxing_tag: string;
     change_hint: string;
   }>;
-  /** 五行/流年 + 统计的趣味 TOP5（与 MAFB 专业流水线解耦） */
-  personalized_top5?: FbtiPersonalizedTop5Row[];
   bazi_analysis?: Record<string, unknown>;
   intent?: Record<string, unknown>;
   strategy_bundle?: Record<string, unknown>;

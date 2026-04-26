@@ -1,5 +1,5 @@
 import { BulbOutlined } from "@ant-design/icons";
-import { Button, Card, Input, List, Space, Switch, Table, Tag, Typography, message } from "antd";
+import { Button, Card, Input, List, Space, Switch, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
@@ -201,33 +201,6 @@ export default function AiFundPickPage() {
                 </List.Item>
               )}
             />
-            {ai.personalized_top5 && ai.personalized_top5.length > 0 ? (
-              <>
-                <Typography.Title level={5} style={{ marginTop: 16 }}>
-                  个性化 TOP5（五行 / 流年 + 金融统计，趣味展示）
-                </Typography.Title>
-                <Table
-                  size="small"
-                  pagination={false}
-                  rowKey={(row) => String(row.rank)}
-                  dataSource={ai.personalized_top5}
-                  scroll={{ x: "max-content" }}
-                  columns={[
-                    { title: "#", dataIndex: "rank", width: 40 },
-                    { title: "代码", dataIndex: "code", width: 88 },
-                    { title: "名称", dataIndex: "name", ellipsis: true },
-                    { title: "赛道", dataIndex: "track", width: 88 },
-                    { title: "综合分", dataIndex: "composite_score", width: 88 },
-                    {
-                      title: "命理/流年结构化",
-                      dataIndex: "reason_mingli_structured",
-                      ellipsis: true
-                    },
-                    { title: "金融统计", dataIndex: "reason_finance", ellipsis: true }
-                  ]}
-                />
-              </>
-            ) : null}
           </Card>
         )}
       </PageCard>

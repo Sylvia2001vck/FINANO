@@ -376,60 +376,67 @@ def _akshare_holdings_features(
     return eq_ratio, top10, top5, tops, quarter_samples, ["akshare_holdings_ok", *extra_note]
 
 
-def _akshare_manager_quality_score(fund_code: str) -> tuple[float | None, float | None, list[str]]:
+def _akshare_manager_quality_score(fund_code: str) -> tuple[float | None, float | None, str | None, list[str]]:
     """
     Rule-based manager score reconstruction:
     score ~= 0.4 * tenure_years + 0.6 * annual_return.
     Then clamp to [0, 5].
     """
     if not bool(settings.fundamental_use_akshare):
-        return None, None, ["akshare_manager_disabled"]
+        return None, None, None, ["akshare_manager_disabled"]
     try:
         import akshare as ak  # type: ignore
     except Exception:
-        return None, None, ["akshare_manager_import_failed"]
+        return None, None, None, ["akshare_manager_import_failed"]
 
     timeout_sec = float(settings.fundamental_akshare_timeout_sec or 12.0)
     notes: list[str] = []
-    status, df = _run_with_timeout(ak.fund_manager_history_em, symbol=fund_code, timeout_sec=timeout_sec)
-    if df is None:
-        status2, df = _run_with_timeout(ak.fund_manager_history_em, fund=fund_code, timeout_sec=timeout_sec)
-        status = status2 if status == "ok" else status
+    if not hasattr(ak, "fund_manager_em"):
+        return None, None, None, ["akshare_manager_api_missing_fund_manager_em"]
+    status, df = _run_with_timeout(ak.fund_manager_em, timeout_sec=timeout_sec)
     if df is None or getattr(df, "empty", True):
         if status == "timeout":
-            return None, None, ["akshare_manager_timeout"]
+            return None, None, None, ["akshare_manager_timeout"]
         if status == "error":
-            return None, None, ["akshare_manager_error"]
-        return None, None, ["akshare_manager_empty"]
+            return None, None, None, ["akshare_manager_error"]
+        return None, None, None, ["akshare_manager_empty"]
 
     cols = list(df.columns)
-    tenure_col = next((c for c in cols if "任职天数" in str(c) or "任职时长" in str(c)), None)
-    ann_col = next((c for c in cols if "年化" in str(c) and "回报" in str(c)), None)
-    ret_col = next((c for c in cols if "任职回报" in str(c) or ("收益" in str(c) and "任职" in str(c))), None)
-    if tenure_col is None and ann_col is None and ret_col is None:
-        return None, None, ["akshare_manager_schema_unexpected"]
+    code_col = next((c for c in cols if "现任基金代码" in str(c)), None)
+    name_col = next((c for c in cols if str(c).strip() == "姓名" or "经理" in str(c)), None)
+    tenure_col = next((c for c in cols if "累计从业时间" in str(c) or "任职天数" in str(c)), None)
+    best_ret_col = next((c for c in cols if "最佳回报" in str(c) or ("回报" in str(c) and "现任基金" in str(c))), None)
+    if code_col is None or tenure_col is None:
+        return None, None, None, ["akshare_manager_schema_unexpected"]
 
-    row0 = None
+    def _codes(v: Any) -> list[str]:
+        s = str(v or "").strip()
+        if not s:
+            return []
+        parts = re.split(r"[,，;；/|\\s]+", s)
+        return [p.strip() for p in parts if re.fullmatch(r"\d{6}", p.strip())]
+
+    hit_rows = []
     try:
-        row0 = df.iloc[0]
+        for _, row in df.iterrows():
+            if fund_code in _codes(row.get(code_col)):
+                hit_rows.append(row)
     except Exception:
-        return None, None, ["akshare_manager_row_parse_failed"]
-    if row0 is None:
-        return None, None, ["akshare_manager_row_parse_failed"]
+        return None, None, None, ["akshare_manager_row_parse_failed"]
+    if not hit_rows:
+        return None, None, None, ["akshare_manager_not_found_for_code"]
 
-    tenure_days = _to_float(row0.get(tenure_col)) if tenure_col else None
-    annual = _to_float(row0.get(ann_col)) if ann_col else None
-    if annual is None and ret_col is not None and tenure_days and tenure_days > 30:
-        total_ret = _to_float(row0.get(ret_col))
-        if total_ret is not None:
-            total_ret = total_ret / 100.0 if total_ret > 1 else total_ret
-            annual = (1.0 + total_ret) ** (365.0 / max(30.0, tenure_days)) - 1.0
-    if annual is not None and annual > 1.0:
-        annual = annual / 100.0
-
+    row0 = hit_rows[0]
+    manager_name = str(row0.get(name_col) or "").strip() if name_col else None
+    tenure_days = _to_float(row0.get(tenure_col))
+    best_ret = _to_float(row0.get(best_ret_col)) if best_ret_col else None
+    annual = None
+    if best_ret is not None:
+        # fund_manager_em 暴露的是“现任基金最佳回报(%)”，作为年度表现代理信号（非严格年化）。
+        annual = best_ret / 100.0 if best_ret > 1.0 else best_ret
     years = (tenure_days / 365.0) if isinstance(tenure_days, (int, float)) and tenure_days > 0 else None
     if years is None and annual is None:
-        return None, None, ["akshare_manager_insufficient_fields"]
+        return None, None, manager_name, ["akshare_manager_insufficient_fields"]
 
     score_raw = 0.0
     if years is not None:
@@ -438,7 +445,7 @@ def _akshare_manager_quality_score(fund_code: str) -> tuple[float | None, float 
         score_raw += min(2.5, max(-0.5, annual * 6.0))
     score = float(max(0.0, min(5.0, score_raw)))
     notes.append("akshare_manager_score_ok")
-    return score, annual, notes
+    return score, annual, manager_name, notes
 
 
 def fetch_fund_fundamental_snapshot(fund_code: str) -> dict[str, Any]:
@@ -472,15 +479,33 @@ def fetch_fund_fundamental_snapshot(fund_code: str) -> dict[str, Any]:
     top10 = None
     top5 = None
     top_holdings: list[dict[str, Any]] = []
-    aum_billion, manager_name, notes_overview = _akshare_overview_fields(code)
-    notes.extend(notes_overview)
+    try:
+        aum_billion, manager_name, notes_overview = _akshare_overview_fields(code)
+        notes.extend(notes_overview)
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"overview_exception:{type(e).__name__}")
 
-    eq_ratio, top10, top5, top_holdings, qn_hold, notes_holdings = _akshare_holdings_features(code)
-    notes.extend(notes_holdings)
-    manager_score, manager_ret, notes_mgr = _akshare_manager_quality_score(code)
-    notes.extend(notes_mgr)
+    try:
+        eq_ratio, top10, top5, top_holdings, qn_hold, notes_holdings = _akshare_holdings_features(code)
+        notes.extend(notes_holdings)
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"holdings_exception:{type(e).__name__}")
+        eq_ratio, top10, top5, top_holdings, qn_hold = None, None, None, [], 0
 
-    drift, qn_drift = _akshare_portfolio_drift(code, int(settings.fundamental_akshare_quarters))
+    try:
+        manager_score, manager_ret, manager_name2, notes_mgr = _akshare_manager_quality_score(code)
+        if not manager_name and manager_name2:
+            manager_name = manager_name2
+        notes.extend(notes_mgr)
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"manager_exception:{type(e).__name__}")
+        manager_score, manager_ret = None, None
+
+    try:
+        drift, qn_drift = _akshare_portfolio_drift(code, int(settings.fundamental_akshare_quarters))
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"drift_exception:{type(e).__name__}")
+        drift, qn_drift = None, 0
     qn = max(int(qn_hold or 0), int(qn_drift or 0))
     if qn > 0:
         notes.append(f"akshare_quarters={qn}")

@@ -397,6 +397,7 @@ export default function MAFBPage() {
   const [runLogStatus, setRunLogStatus] = useState<"running" | "success" | "failed" | null>(null);
   const [runLogCollapsed, setRunLogCollapsed] = useState(false);
   const [runLogTitle, setRunLogTitle] = useState("调用记录");
+  const [laneForceSingleRow, setLaneForceSingleRow] = useState(false);
   const navWarmRef = useRef<Set<string>>(new Set());
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeResult, setProbeResult] = useState<Record<string, unknown> | null>(null);
@@ -559,6 +560,24 @@ export default function MAFBPage() {
     };
   }, [catalogRetryNonce]);
 
+  useEffect(() => {
+    const syncLaneLayout = () => {
+      if (typeof window === "undefined") return;
+      const byApi = Boolean(document.fullscreenElement);
+      const sw = Number(window.screen?.availWidth || window.screen?.width || 0);
+      const sh = Number(window.screen?.availHeight || window.screen?.height || 0);
+      const byViewport = sw > 0 && sh > 0 && window.innerWidth >= sw * 0.95 && window.innerHeight >= sh * 0.9;
+      setLaneForceSingleRow(byApi || byViewport);
+    };
+    syncLaneLayout();
+    window.addEventListener("resize", syncLaneLayout);
+    window.addEventListener("fullscreenchange", syncLaneLayout);
+    return () => {
+      window.removeEventListener("resize", syncLaneLayout);
+      window.removeEventListener("fullscreenchange", syncLaneLayout);
+    };
+  }, []);
+
   const funds = fundBundle?.items ?? [];
   const fundTotal = fundBundle?.total ?? 0;
   const catalogMode = fundBundle?.catalog_mode ?? "static";
@@ -683,11 +702,11 @@ export default function MAFBPage() {
   const commonComplianceNotes = complianceNotes.filter((n) => !riskWarningNotes.includes(n));
   const lanePack = buildTraceLanes(runTrace);
   const laneItems: Array<{ key: LaneKey; title: string }> = [
-    { key: "profiling", title: "Profile 泳道" },
     { key: "fundamental", title: "Fundamental 泳道" },
-    { key: "technical", title: "Technical 泳道" },
     { key: "risk", title: "Risk 泳道" },
     { key: "attribution", title: "归因泳道" },
+    { key: "profiling", title: "Profile 泳道" },
+    { key: "technical", title: "Technical 泳道" },
   ];
 
   /** MAFB 与相似查询互斥：避免并行请求导致结果与当前输入错位 */
@@ -755,34 +774,40 @@ export default function MAFBPage() {
           )
         ) : null}
         {runLogVisible ? (
-          <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              marginBottom: 12,
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: laneForceSingleRow ? "repeat(5, minmax(0, 1fr))" : "repeat(auto-fit, minmax(260px, 1fr))"
+            }}
+          >
             {laneItems.map((lane) => {
               const rows = lanePack.lanes[lane.key];
               const active = lanePack.running[lane.key];
               return (
-                <Col xs={24} md={12} xl={6} key={lane.key}>
-                  <Card
-                    size="small"
-                    title={
-                      <Space>
-                        <span>{lane.title}</span>
-                        <Tag color={active ? "processing" : "default"}>{active ? "运行中" : "待机/已完成"}</Tag>
-                      </Space>
-                    }
-                    bodyStyle={{ maxHeight: 160, overflow: "auto", fontSize: 12 }}
-                  >
-                    {rows.length ? (
-                      rows.map((x, i) => (
-                        <div key={`${lane.key}-${i}`}>{x}</div>
-                      ))
-                    ) : (
-                      <Typography.Text type="secondary">暂无该泳道事件</Typography.Text>
-                    )}
-                  </Card>
-                </Col>
+                <Card
+                  key={lane.key}
+                  size="small"
+                  title={
+                    <Space>
+                      <span>{lane.title}</span>
+                      <Tag color={active ? "processing" : "default"}>{active ? "运行中" : "待机/已完成"}</Tag>
+                    </Space>
+                  }
+                  bodyStyle={{ maxHeight: 160, overflow: "auto", fontSize: 12 }}
+                >
+                  {rows.length ? (
+                    rows.map((x, i) => (
+                      <div key={`${lane.key}-${i}`}>{x}</div>
+                    ))
+                  ) : (
+                    <Typography.Text type="secondary">暂无该泳道事件</Typography.Text>
+                  )}
+                </Card>
               );
             })}
-          </Row>
+          </div>
         ) : null}
         <Form
           form={form}

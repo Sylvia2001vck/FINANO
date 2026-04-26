@@ -160,6 +160,17 @@ def _build_score_prompt(
     no_user_rule = ""
     if agent in {"fundamental", "technical", "risk", "attribution"}:
         no_user_rule = "\n严禁提及“用户/投资者/画像/适配”等词，只讨论标的本身。"
+    data_ready_rule = (
+        "若任一关键指标缺失或为 0（不适用于 risk_rating），必须改为输出：\n"
+        f'{{"agent_name":"{agent}","score":0,"reason":"{{\\"error\\":\\"数据源未就绪\\"}}"}}。'
+    )
+    if agent == "fundamental":
+        data_ready_rule = (
+            "仅当基础核心特征全部缺失时，才输出数据未就绪。"
+            "基础核心特征为：max_drawdown_3y、sharpe_3y、momentum_60d、volatility_60d、stock_top10_concentration、manager_score；"
+            "至少命中 1 项且为非 0 时，必须继续完成打分，不得返回数据未就绪。\n"
+            f'当且仅当全部核心特征缺失/为 0 时输出：{{"agent_name":"{agent}","score":0,"reason":"{{\\"error\\":\\"数据源未就绪\\"}}"}}。'
+        )
     return f"""你是公募基金/ETF投研助手，仅基于给定结构化数据做事实性评估，不预测价格，不承诺收益。
 角色：{agent_role}
 基金事实(JSON)：{fund_json}
@@ -170,8 +181,7 @@ RAG检索片段：
 {no_user_rule}
 
 请严格输出一个 JSON 对象，键为 agent_name, score, reason。
-若任一关键指标缺失或为 0（不适用于 risk_rating），必须改为输出：
-{{"agent_name":"{agent}","score":0,"reason":"{{\"error\":\"数据源未就绪\"}}"}}。
+{data_ready_rule}
 score 为整数 -2~+2（-2 强烈负面，+2 强烈正面）。
 reason 必须用中文，且按以下四段组织（可用分号连接）：
 【核心结论】一句话判断；
@@ -355,7 +365,13 @@ def _resolve_model_for_agent(agent_key: str | None) -> str:
     return settings.dashscope_finance_model
 
 
-def _invoke_finance_llm(messages: list[dict[str, str]], prompt_fallback: str, *, agent_key: str | None = None) -> str | None:
+def _invoke_finance_llm(
+    messages: list[dict[str, str]],
+    prompt_fallback: str,
+    *,
+    agent_key: str | None = None,
+    force_model: str | None = None,
+) -> str | None:
     """
     仅调用 DashScope 通义千问；失败/超时返回 None，由上层走规则引擎。
     """
@@ -408,7 +424,7 @@ def _invoke_finance_llm(messages: list[dict[str, str]], prompt_fallback: str, *,
         with _MODEL_PRECHECK_LOCK:
             _MODEL_PRECHECK[model_name] = (time.time(), bool(ok))
 
-    model = _resolve_model_for_agent(agent_key)
+    model = (force_model or "").strip() or _resolve_model_for_agent(agent_key)
     agent = (agent_key or "default").strip().lower()
     fallback_model = (settings.mafb_qwen_fallback_model or "qwen-plus").strip()
     use_model = model

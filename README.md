@@ -43,6 +43,72 @@ Finano 是企业轻量标准的全栈金融演示项目：`React 18 + TypeScript
 
 **简历表述示例**：基于通义千问金融 API 与 LangGraph 状态编排实现多智能体协同；FAISS RAG + 强制 JSON 投票；**云端与本地 Qwen-1.8B 双链路容灾**；前置合规拦截与可解释推理链输出。
 
+## MAFB 总体实现（多 Agent / 数据源 / Prompt）
+
+### 1) 流程总览（LangGraph）
+
+MAFB 采用共享状态图，主链路为：
+
+`profile -> preheat -> rag -> 并行五路(fundamental/technical/risk/attribution/profiling) -> allocation -> compliance -> voting|blocked`
+
+- `profile`：构建用户画像（FBTI + 风险偏好）。
+- `preheat`：一次性预热核心行情与结构化指标，尽量减少并行节点重复 I/O。
+- `rag`：基金档案向量检索并注入事实片段。
+- 五路并行：各 Agent 独立打分，回写 `agent_scores` / `agent_reasons`。
+- `compliance`：禁宣词、错配和可选大模型审查。
+- `voting`：权重汇总，生成 `final_report`。
+
+### 2) 多 Agent 角色与数据源
+
+| Agent | 角色 | 主要数据源 |
+|------|------|------------|
+| `fundamental` | 基本面（规模、经理、集中度、风格漂移、风险收益效率） | `fund_data` 预热结果（快照缓存 + 历史净值衍生 + 基本面抓取 + 新闻辅因子） |
+| `technical` | 技术面（动量与趋势） | 预热统一读取的净值序列 `nav_rows_for_technical`、技术指标（EMA/Bias/RSI/MACD）、FAISS 技术检索结果 |
+| `risk` | 风险与防御能力 | `risk_summary`（VaR95、Sortino、回撤、波动率、集中度、流动性、相关性）+ 新闻黑天鹅/政策扰动辅因子 |
+| `attribution` | 业绩与风格归因 | `performance_style_attribution`（超额收益代理、收益来源拆解、风格相似度/偏离度） |
+| `profiling` | 标的 × 用户画像适配 | `fund_data` + `user_profile` + `risk_level` |
+
+补充说明：
+- 并行五路使用共享状态，不是孤立内存。
+- 关键缺失字段会触发 `data_not_ready`，并按节点降级到规则引擎或中性输出。
+- 技术链路已优先复用预热内存数据，减少离线库重复读取冲突。
+
+### 3) Prompt 设计（评分 Agent）
+
+评分 Prompt 由统一模板生成，核心约束：
+
+- 输出必须为 JSON：`agent_name`, `score`, `reason`。
+- `score` 为整数 `-2 ~ +2`。
+- `reason` 必须包含四段：`核心结论 / 硬事实数据 / 逻辑推演 / 评分标签`。
+- 非 `profiling` Agent 禁止提“用户/画像/适配”字样，只谈标的。
+- 数据缺失时需输出 `{"error":"数据源未就绪"}`（`fundamental` 已放宽为“核心特征全缺失才失败”）。
+
+各 Agent 的 Prompt 侧重点：
+- `fundamental`：持仓集中度、风格漂移、经理能力、规模、夏普与回撤（新闻仅辅助）。
+- `technical`：EMA(5/20/60)、Bias20、RSI14、MACD、60 日动量与波动率，并结合 `technical_retrieval`。
+- `risk`：回撤、波动、Sortino、VaR95、集中度、流动性、相关性（舆情不覆盖量化主结论）。
+- `attribution`：超额收益来源拆解与风格偏离。
+- `profiling`：用户画像与标的风格匹配度及错配风险。
+
+### 4) 汇总与输出
+
+`voting` 按固定权重汇总：
+
+- fundamental: `0.24`
+- technical: `0.24`
+- risk: `0.22`
+- attribution: `0.18`
+- profiling: `0.12`
+
+最终输出 `final_report` 关键字段包括：
+
+- `weighted_total`, `scores`, `score_breakdown`
+- `reasons`, `single_fund_analysis`
+- `technical_summary`, `risk_summary`, `performance_style_attribution`
+- `compliance`, `disclaimer`
+
+整体目标：在可解释、可回溯、可降级的前提下，实现多智能体并行分析与结构化决策输出。
+
 ## FBTI（Finance MBTI）— 逻辑与产品设计
 
 **FBTI**（**F**inance **MBTI**）是本项目内的**行为金融学演示画像**：8 道二选一问卷 → 生成 **四位类型码** → 映射到 **16 种金融人格归档**（R/S×L/T×D/F×C/A 全组合）；若用户档案中已有生日则仍参与五行融合规则。用于答辩与产品叙事，**不构成投资建议**（前后端文案均已声明）。
@@ -227,6 +293,79 @@ finano/
 | **用户输入** | 登录用户已保存的 **FBTI 四位码**（及后端归档中的演示字段；选股页无需再填问卷）。 |
 | **针对性输出** | 至多 **5 只** 基金 + **reason** 说明；管线为 **偏好 LLM → 随机 400 + 规则 Top20 → 终筛 LLM**，共 **2 次** 主要 LLM 调用。 |
 | **为何慢** | 两次串行大模型 + 大目录抽样与打分；无 Key 时走规则会快很多。 |
+
+### AI娱乐选基（FBTI）实现设计
+
+#### 模块目标与定位
+
+- **定位**：独立于 MAFB 的娱乐向选基链路，用于“自然语言策略灵感 + 结构化基金筛选”。
+- **输入**：优先读取用户已保存画像（`fbti_profile`、生日/出生时段），可选叠加 `natural_intent` 与 `mood`。
+- **输出**：结构化 `reason + funds[<=5]`，并在流式模式下返回 `bazi_analysis / intent / strategy_bundle` 作为可解释中间层。
+- **合规边界**：不承诺收益，不输出确定性买卖建议。
+
+#### 后端流程（多阶段编排）
+
+入口函数：`run_fbti_ai_selection`（`backend/app/services/ai_fund_selector.py`）。
+
+```mermaid
+flowchart TD
+  A["输入：FBTI/生日/意图/情绪"] --> B["阶段0：八字当日解读<br/>infer_bazi_today_analysis_with_ai"]
+  B --> C["阶段1：玄学语义 -> 金融意图<br/>infer_metaphysics_finance_intent_with_ai"]
+  C --> D["阶段2：意图 -> 因子/策略包<br/>infer_strategy_bundle_with_ai"]
+  D --> E["阶段3：画像偏好归纳<br/>infer_selection_preferences_with_ai"]
+  E --> F["阶段4：随机抽样 400 + 规则打分 Top20"]
+  F --> G["阶段5：可选合并实时估值"]
+  G --> H["阶段6：LLM 终筛 Top5<br/>select_funds_with_ai"]
+  H --> I["输出：reason + funds（最多5只）"]
+  B -.失败回退.-> R["规则兜底继续"]
+  C -.失败回退.-> R
+  D -.失败回退.-> R
+  E -.失败回退.-> R
+  H -.失败回退.-> R
+  R --> I
+```
+
+关键实现点：
+
+- **阶段化 LLM**：每阶段只做单一任务（意图翻译、策略映射、终筛），降低提示词耦合与输出漂移。
+- **候选池先收敛**：先规则筛到 Top20，再让模型终筛，避免“全库直接喂模型”导致 token 膨胀与不稳定。
+- **结构化优先**：统一要求 JSON 输出，解析失败即回退规则，保证前端必有可展示结果。
+
+#### 候选池与打分逻辑
+
+- 随机池规模：`_FBTI_SAMPLE_POOL = 400`
+- 规则保留：`_FBTI_RANK_TOP = 20`
+- 终筛输入上限：`_FBTI_PROMPT_MAX_FUNDS = 20`
+
+规则评分核心（`_score_fund_for_preferences`）融合：
+
+- 偏好/回避赛道关键词匹配（`preferred_tracks` / `avoid_tracks`）
+- 风险评级与用户风险偏好匹配
+- ETF 偏好（`prefer_etf`）
+- Sharpe、最大回撤、60 日动量等统计特征
+- 五行标签与赛道语义的映射加分
+
+终筛失败时采用 `_pick_diverse_fallback_funds`，保证结果具备基础分散度，不会被同一主题基金挤满。
+
+#### API 与前端交互
+
+后端接口（`backend/app/modules/agent/router.py`）：
+
+- `POST /api/v1/agent/ai/fbti-select`：一键执行完整链路，返回最终结果。
+- `POST /api/v1/agent/ai/fbti-select/intent`：仅返回“八字解读 + 意图翻译 + 策略包”预览。
+- `POST /api/v1/agent/ai/fbti-select/stream`：SSE 流式推送阶段事件与最终结果。
+
+前端页面（`frontend/src/pages/AiFundPick/index.tsx`）：
+
+- 支持“预览意图与策略”与“流式执行”两种操作。
+- 流式接收 `stage/bazi/intent/strategy/result`，实时显示阶段日志与中间结构化对象。
+- 页面仅展示最终 Top5 结果，不再展示与主结果不一致的额外“趣味 TOP5”列表。
+
+#### 模型与稳定性策略
+
+- 该链路固定走 `agent_key="fbti"`，并支持 `force_model`。
+- 配置项 `FBTI_LLM_MODEL` 默认 `qwen-plus`，用于避免跟随全局升级到 `qwen3.*` 带来的波动。
+- 任一 LLM 阶段失败（超时、异常、非 JSON、缺字段）都不会中断主流程，统一降级到规则路径并返回可用结构化结果。
 
 ## 工程说明
 

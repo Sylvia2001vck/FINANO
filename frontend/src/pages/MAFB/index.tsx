@@ -27,14 +27,20 @@ import { PageCard } from "../../components/UI/PageCard";
 import {
   addMyAgentFunds,
   getMafbTaskStatus,
+  getMafbReportAsset,
   getFundCatalogStatus,
+  deleteMafbReportAsset,
+  listMafbReportAssets,
   listAgentFunds,
   postLlmProbe,
   postWarmFundCatalog,
   removeMyAgentFund,
   runMafbAsync,
+  saveMafbReportAsset,
+  updateMafbReportAsset,
   fetchSimilarFunds,
   type AgentFundsListResponse,
+  type MAFBAssetItem,
   type ListAgentFundsParams,
   type SimilarFundRow
 } from "../../services/agent";
@@ -402,6 +408,30 @@ export default function MAFBPage() {
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeResult, setProbeResult] = useState<Record<string, unknown> | null>(null);
   const [navPrimaryStatus, setNavPrimaryStatus] = useState<string>("");
+  const [assetItems, setAssetItems] = useState<MAFBAssetItem[]>([]);
+  const [assetListLoading, setAssetListLoading] = useState(false);
+  const [assetSaving, setAssetSaving] = useState(false);
+  const [assetDetailLoading, setAssetDetailLoading] = useState(false);
+  const [assetFundCodeFilter, setAssetFundCodeFilter] = useState("");
+  const [assetDateFrom, setAssetDateFrom] = useState("");
+  const [assetDateTo, setAssetDateTo] = useState("");
+
+  const loadAssetItems = async () => {
+    setAssetListLoading(true);
+    try {
+      const data = await listMafbReportAssets({
+        limit: 80,
+        fund_code: assetFundCodeFilter.trim() || undefined,
+        date_from: assetDateFrom.trim() || undefined,
+        date_to: assetDateTo.trim() || undefined
+      });
+      setAssetItems(data.items || []);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "加载我的资产失败");
+    } finally {
+      setAssetListLoading(false);
+    }
+  };
 
   const preheatFundNav = async (codeRaw?: string) => {
     const c = String(codeRaw ?? "").trim();
@@ -578,6 +608,10 @@ export default function MAFBPage() {
     };
   }, []);
 
+  useEffect(() => {
+    void loadAssetItems();
+  }, []);
+
   const funds = fundBundle?.items ?? [];
   const fundTotal = fundBundle?.total ?? 0;
   const catalogMode = fundBundle?.catalog_mode ?? "static";
@@ -649,10 +683,7 @@ export default function MAFBPage() {
         const evs = st.trace_events || [];
         if (evs.length) {
           setRunTrace((prev) =>
-            [
-              ...prev,
-              ...evs.map((e) => `${e.node ? `[${e.node}] ` : ""}${e.kind || "event"}: ${e.message || ""}`)
-            ].slice(-28)
+            [...prev, ...evs.map((e) => `${e.node ? `[${e.node}] ` : ""}${e.kind || "event"}: ${e.message || ""}`)]
           );
         }
         cursor = typeof st.next_cursor === "number" ? st.next_cursor : cursor + evs.length;
@@ -680,6 +711,79 @@ export default function MAFBPage() {
       message.error(error instanceof Error ? error.message : "执行失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveCurrentReportAsAsset = async () => {
+    if (!report) {
+      message.warning("请先生成 MAFB 报告");
+      return;
+    }
+    const fundCode = String((report.fund as Record<string, unknown> | undefined)?.code || watchedFundCode || "").trim();
+    if (!fundCode) {
+      message.warning("缺少基金代码，无法保存");
+      return;
+    }
+    setAssetSaving(true);
+    try {
+      await saveMafbReportAsset({
+        fund_code: fundCode,
+        include_fbti: Boolean(form.getFieldValue("include_fbti") ?? true),
+        title: `${fundCode} MAFB 报告 ${new Date().toLocaleString()}`,
+        final_report: report
+      });
+      message.success("已保存到我的资产");
+      await loadAssetItems();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setAssetSaving(false);
+    }
+  };
+
+  const openAssetReport = async (id: number) => {
+    setAssetDetailLoading(true);
+    try {
+      const data = await getMafbReportAsset(id);
+      setReport(data.final_report || null);
+      message.success("已载入历史资产报告");
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "读取失败");
+    } finally {
+      setAssetDetailLoading(false);
+    }
+  };
+
+  const renameAssetReport = async (id: number, oldTitle: string) => {
+    const next = window.prompt("输入新标题", oldTitle || "");
+    if (!next) return;
+    try {
+      await updateMafbReportAsset(id, { title: next });
+      message.success("已重命名");
+      await loadAssetItems();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "重命名失败");
+    }
+  };
+
+  const togglePinAssetReport = async (id: number, pinned: boolean) => {
+    try {
+      await updateMafbReportAsset(id, { is_pinned: !pinned });
+      message.success(!pinned ? "已置顶" : "已取消置顶");
+      await loadAssetItems();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "置顶操作失败");
+    }
+  };
+
+  const removeAssetReport = async (id: number) => {
+    if (!window.confirm("确定删除这条资产报告吗？删除后不可恢复。")) return;
+    try {
+      await deleteMafbReportAsset(id);
+      message.success("已删除");
+      await loadAssetItems();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "删除失败");
     }
   };
 
@@ -914,6 +1018,90 @@ export default function MAFBPage() {
             />
           ) : null}
         </Form>
+
+        <Card
+          size="small"
+          style={{ marginTop: 12 }}
+          title="我的资产（MAFB 报告）"
+          extra={
+            <Space>
+              <Button size="small" onClick={() => void loadAssetItems()} loading={assetListLoading}>
+                刷新
+              </Button>
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => void saveCurrentReportAsAsset()}
+                loading={assetSaving}
+                disabled={!report}
+              >
+                一键保存当前报告
+              </Button>
+            </Space>
+          }
+        >
+          <Space wrap style={{ marginBottom: 10 }}>
+            <Input
+              style={{ width: 140 }}
+              placeholder="基金代码"
+              value={assetFundCodeFilter}
+              onChange={(e) => setAssetFundCodeFilter(e.target.value.replace(/\D/g, "").slice(0, 10))}
+            />
+            <Input
+              style={{ width: 150 }}
+              placeholder="开始日期 YYYY-MM-DD"
+              value={assetDateFrom}
+              onChange={(e) => setAssetDateFrom(e.target.value.trim())}
+            />
+            <Input
+              style={{ width: 150 }}
+              placeholder="结束日期 YYYY-MM-DD"
+              value={assetDateTo}
+              onChange={(e) => setAssetDateTo(e.target.value.trim())}
+            />
+            <Button size="small" onClick={() => void loadAssetItems()} loading={assetListLoading}>
+              查询
+            </Button>
+          </Space>
+          <List
+            size="small"
+            loading={assetListLoading || assetDetailLoading}
+            dataSource={assetItems}
+            locale={{ emptyText: "暂无已保存报告" }}
+            renderItem={(it) => (
+              <List.Item
+                actions={[
+                  <Button key={`open-${it.id}`} type="link" size="small" onClick={() => void openAssetReport(it.id)}>
+                    查看
+                  </Button>,
+                  <Button
+                    key={`pin-${it.id}`}
+                    type="link"
+                    size="small"
+                    onClick={() => void togglePinAssetReport(it.id, Boolean(it.is_pinned))}
+                  >
+                    {it.is_pinned ? "取消置顶" : "置顶"}
+                  </Button>,
+                  <Button key={`rename-${it.id}`} type="link" size="small" onClick={() => void renameAssetReport(it.id, it.title)}>
+                    重命名
+                  </Button>,
+                  <Button key={`del-${it.id}`} type="link" size="small" danger onClick={() => void removeAssetReport(it.id)}>
+                    删除
+                  </Button>
+                ]}
+              >
+                <Space wrap>
+                  <Typography.Text strong>{it.title || `${it.fund_code} MAFB 报告`}</Typography.Text>
+                  {it.is_pinned ? <Tag color="gold">置顶</Tag> : null}
+                  <Tag>{it.fund_code}</Tag>
+                  {typeof it.weighted_total === "number" ? <Tag color="blue">总分 {it.weighted_total.toFixed(2)}</Tag> : null}
+                  {it.verdict ? <Tag color={it.verdict === "pass" ? "green" : "red"}>{it.verdict}</Tag> : null}
+                  {it.created_at ? <Typography.Text type="secondary">{it.created_at}</Typography.Text> : null}
+                </Space>
+              </List.Item>
+            )}
+          />
+        </Card>
 
         <div style={{ marginTop: 22 }}>
           <Typography.Title level={5} style={{ marginBottom: 8, marginTop: 0 }}>

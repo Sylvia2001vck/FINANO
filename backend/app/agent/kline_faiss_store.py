@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -10,8 +11,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.agent.kline_feature_builder import KlineWindowFeature, build_latest_query_feature, load_window_features_from_offline_db
+from app.agent.kline_feature_builder import (
+    KlineWindowFeature,
+    build_latest_query_feature,
+    build_latest_query_feature_from_nav_rows,
+    load_window_features_from_offline_db,
+)
 from app.core.config import settings
+from app.modules.fund_offline.query_queue import run_serial_db_task
 from app.modules.fund_offline.session import OfflineSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -25,6 +32,11 @@ _INDEX = None
 _META: list[dict[str, Any]] = []
 _VERSION: dict[str, Any] = {}
 _LOCK = Lock()
+def _is_sqlite_locked_error(exc: Exception) -> bool:
+    msg = str(exc or "").lower()
+    return "database is locked" in msg or "sqlite3.operationalerror" in msg
+
+
 
 
 def _path(p: str) -> Path:
@@ -221,12 +233,37 @@ def search_similar(query_vec: np.ndarray, top_k: int = 5) -> list[dict[str, Any]
     return out
 
 
-def query_latest_fund_windows(code: str, top_k: int = 5) -> dict[str, Any]:
-    db = OfflineSessionLocal()
-    try:
-        query_vec, qmeta = build_latest_query_feature(db, code)
-    finally:
-        db.close()
+def query_latest_fund_windows(code: str, top_k: int = 5, nav_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    if nav_rows:
+        query_vec, qmeta = build_latest_query_feature_from_nav_rows(code, nav_rows)
+    else:
+        query_vec, qmeta = None, None
+        last_err: Exception | None = None
+
+        def _read_latest_feature_from_db() -> tuple[np.ndarray | None, dict[str, Any] | None]:
+            db = OfflineSessionLocal()
+            try:
+                return build_latest_query_feature(db, code)
+            finally:
+                db.close()
+
+        for i in range(3):
+            try:
+                query_vec, qmeta = run_serial_db_task(
+                    _read_latest_feature_from_db,
+                    task_name=f"query_latest_fund_windows:{code}",
+                    timeout_sec=35.0,
+                )
+                last_err = None
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if not _is_sqlite_locked_error(e):
+                    logger.debug("build_latest_query_feature failed: code=%s", code, exc_info=True)
+                    break
+                time.sleep(0.08 * (2**i))
+        if last_err is not None and _is_sqlite_locked_error(last_err):
+            return {"ok": False, "error": "sqlite_locked", "matches": [], "query": None}
     if query_vec is None or qmeta is None:
         return {"ok": False, "error": "data_not_ready", "matches": [], "query": None}
     matches = search_similar(query_vec, top_k=top_k + 2)

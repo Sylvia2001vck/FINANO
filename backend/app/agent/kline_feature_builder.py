@@ -144,6 +144,46 @@ def build_latest_query_feature(
     return vec, meta
 
 
+def build_latest_query_feature_from_nav_rows(
+    code: str,
+    nav_rows: list[dict[str, Any]],
+    *,
+    window_size: int | None = None,
+    paa_dims: int | None = None,
+) -> tuple[np.ndarray | None, dict[str, Any] | None]:
+    win = int(window_size or settings.kline_window_size_days)
+    dims = int(paa_dims or settings.kline_paa_dims)
+    if not nav_rows or len(nav_rows) < win:
+        return None, None
+    cleaned: list[tuple[str, float]] = []
+    for r in nav_rows:
+        d = str(r.get("date") or "").strip()
+        try:
+            v = float(r.get("nav") or 0.0)
+        except Exception:
+            continue
+        if not d or v <= 0:
+            continue
+        cleaned.append((d[:10], v))
+    if len(cleaned) < win:
+        return None, None
+    cleaned.sort(key=lambda x: x[0])
+    tail = cleaned[-win:]
+    navs = [x[1] for x in tail]
+    base = navs[0]
+    if base <= 0:
+        return None, None
+    norm_vals = [(x / base) - 1.0 for x in navs]
+    vec = _paa(norm_vals, dims)
+    meta = {
+        "code": code,
+        "start_date": tail[0][0],
+        "end_date": tail[-1][0],
+        "as_of": datetime.utcnow().isoformat(),
+    }
+    return vec, meta
+
+
 def load_window_features_from_offline_db(max_codes: int | None = None) -> list[KlineWindowFeature]:
     db = OfflineSessionLocal()
     try:

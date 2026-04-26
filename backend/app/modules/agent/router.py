@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -22,7 +23,8 @@ from app.core.exceptions import APIException
 from app.core.responses import success_response
 from app.core.security import get_current_user
 from app.db.session import get_db
-from app.modules.agent.schemas import AgentProfileSave, LLMProbeRequest, MAFBRunRequest
+from app.modules.agent.models import UserMafbReportAsset, UserMafbReportPin
+from app.modules.agent.schemas import AgentProfileSave, LLMProbeRequest, MAFBReportSaveRequest, MAFBReportUpdateRequest, MAFBRunRequest
 from app.modules.user.models import User
 from app.modules.user.service import update_investor_profile
 from app.services.ai_fund_selector import (
@@ -268,6 +270,200 @@ def get_mafb_pipeline_status(
     if status == "completed" and isinstance(rec.get("result_state"), dict):
         out["data"] = _mafb_response_payload(rec["result_state"])
     return success_response(data=out, message="ok")
+
+
+@router.post("/reports/save")
+def save_mafb_report_asset(
+    payload: MAFBReportSaveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    report = dict(payload.final_report or {})
+    title = str(payload.title or "").strip()
+    if not title:
+        title = f"{payload.fund_code.strip()} MAFB 报告"
+    item = UserMafbReportAsset(
+        user_id=int(current_user.id),
+        fund_code=payload.fund_code.strip(),
+        include_fbti=bool(payload.include_fbti),
+        title=title[:120],
+        weighted_total=(
+            float(report.get("weighted_total"))
+            if isinstance(report.get("weighted_total"), (int, float))
+            else None
+        ),
+        verdict=(str(report.get("verdict") or "").strip() or None),
+        final_report_json=json.dumps(report, ensure_ascii=False),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return success_response(
+        data={
+            "id": int(item.id),
+            "title": item.title,
+            "fund_code": item.fund_code,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        },
+        message="MAFB 报告已保存到我的资产",
+    )
+
+
+@router.get("/reports")
+def list_mafb_report_assets(
+    limit: int = Query(30, ge=1, le=200),
+    fund_code: str | None = Query(None, description="按基金代码筛选"),
+    date_from: str | None = Query(None, description="开始日期 YYYY-MM-DD"),
+    date_to: str | None = Query(None, description="结束日期 YYYY-MM-DD"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    uid = int(current_user.id)
+    stmt = select(UserMafbReportAsset).where(UserMafbReportAsset.user_id == uid)
+    if fund_code and str(fund_code).strip():
+        stmt = stmt.where(UserMafbReportAsset.fund_code == str(fund_code).strip())
+    if date_from:
+        try:
+            d_from = datetime.fromisoformat(str(date_from)[:10]).date()
+            stmt = stmt.where(UserMafbReportAsset.created_at >= datetime.combine(d_from, datetime.min.time()))
+        except Exception:
+            raise APIException(code=40003, message="date_from 非法，需 YYYY-MM-DD", status_code=400)
+    if date_to:
+        try:
+            d_to = datetime.fromisoformat(str(date_to)[:10]).date()
+            stmt = stmt.where(UserMafbReportAsset.created_at <= datetime.combine(d_to, datetime.max.time()))
+        except Exception:
+            raise APIException(code=40003, message="date_to 非法，需 YYYY-MM-DD", status_code=400)
+    total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    rows = list(
+        db.scalars(
+            stmt.order_by(UserMafbReportAsset.created_at.desc(), UserMafbReportAsset.id.desc()).limit(int(limit))
+        )
+    )
+    report_ids = [int(r.id) for r in rows]
+    pin_set: set[int] = set()
+    if report_ids:
+        pin_rows = list(
+            db.scalars(
+                select(UserMafbReportPin.report_id).where(
+                    UserMafbReportPin.user_id == uid,
+                    UserMafbReportPin.report_id.in_(report_ids),
+                )
+            )
+        )
+        pin_set = {int(x) for x in pin_rows}
+    items = [
+        {
+            "id": int(r.id),
+            "title": r.title,
+            "fund_code": r.fund_code,
+            "include_fbti": bool(r.include_fbti),
+            "weighted_total": float(r.weighted_total) if isinstance(r.weighted_total, (int, float)) else None,
+            "verdict": r.verdict,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "is_pinned": int(r.id) in pin_set,
+        }
+        for r in rows
+    ]
+    items.sort(key=lambda x: (1 if bool(x.get("is_pinned")) else 0, str(x.get("created_at") or "")), reverse=True)
+    return success_response(data={"items": items, "total": total}, message="ok")
+
+
+@router.get("/reports/{report_id}")
+def get_mafb_report_asset(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.scalar(
+        select(UserMafbReportAsset).where(
+            UserMafbReportAsset.id == int(report_id),
+            UserMafbReportAsset.user_id == int(current_user.id),
+        )
+    )
+    if not row:
+        raise APIException(code=40004, message="report not found", status_code=404)
+    try:
+        final_report = json.loads(row.final_report_json or "{}")
+    except Exception:
+        final_report = {}
+    return success_response(
+        data={
+            "id": int(row.id),
+            "title": row.title,
+            "fund_code": row.fund_code,
+            "include_fbti": bool(row.include_fbti),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "final_report": final_report if isinstance(final_report, dict) else {},
+        },
+        message="ok",
+    )
+
+
+@router.patch("/reports/{report_id}")
+def update_mafb_report_asset(
+    report_id: int,
+    payload: MAFBReportUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    uid = int(current_user.id)
+    row = db.scalar(
+        select(UserMafbReportAsset).where(
+            UserMafbReportAsset.id == int(report_id),
+            UserMafbReportAsset.user_id == uid,
+        )
+    )
+    if not row:
+        raise APIException(code=40004, message="report not found", status_code=404)
+    if payload.title is not None:
+        t = str(payload.title or "").strip()
+        if not t:
+            raise APIException(code=40003, message="title 不能为空", status_code=400)
+        row.title = t[:120]
+    if payload.is_pinned is not None:
+        pin = db.scalar(
+            select(UserMafbReportPin).where(
+                UserMafbReportPin.user_id == uid,
+                UserMafbReportPin.report_id == int(report_id),
+            )
+        )
+        if bool(payload.is_pinned):
+            if not pin:
+                db.add(UserMafbReportPin(user_id=uid, report_id=int(report_id)))
+        else:
+            if pin:
+                db.delete(pin)
+    db.commit()
+    return success_response(data={"id": int(report_id)}, message="已更新")
+
+
+@router.delete("/reports/{report_id}")
+def delete_mafb_report_asset(
+    report_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    uid = int(current_user.id)
+    row = db.scalar(
+        select(UserMafbReportAsset).where(
+            UserMafbReportAsset.id == int(report_id),
+            UserMafbReportAsset.user_id == uid,
+        )
+    )
+    if not row:
+        raise APIException(code=40004, message="report not found", status_code=404)
+    pin = db.scalar(
+        select(UserMafbReportPin).where(
+            UserMafbReportPin.user_id == uid,
+            UserMafbReportPin.report_id == int(report_id),
+        )
+    )
+    if pin:
+        db.delete(pin)
+    db.delete(row)
+    db.commit()
+    return success_response(data={"id": int(report_id)}, message="已删除")
 
 
 @router.post("/llm-probe")

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -69,7 +70,9 @@ def _upsert_nav_points(db: Session, code: str, rows: list[dict[str, Any]], sourc
         )
     if not payloads:
         return 0
-    stmt = sqlite_insert(FundNavSnapshot).values(payloads)
+    dialect = str(getattr(getattr(db, "bind", None), "dialect", None).name if getattr(db, "bind", None) else "").lower()
+    ins = pg_insert if dialect == "postgresql" else sqlite_insert
+    stmt = ins(FundNavSnapshot).values(payloads)
     stmt = stmt.on_conflict_do_update(
         index_elements=["fund_code", "nav_date"],
         set_={

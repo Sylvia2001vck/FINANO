@@ -36,6 +36,7 @@ class MAFBState(TypedDict, total=False):
     risk_level: int
 
     fund_data: dict[str, Any]
+    nav_rows_for_technical: list[dict[str, Any]]
     rag_chunks: list[str]
     technical_retrieval: Annotated[dict[str, Any], _merge_dict_any]
 

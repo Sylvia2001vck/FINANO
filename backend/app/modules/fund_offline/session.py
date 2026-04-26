@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -22,7 +22,14 @@ def _ensure_sqlite_parent(url: str) -> None:
 
 
 _ensure_sqlite_parent(settings.fund_offline_db_url)
-_connect_args = {"check_same_thread": False} if settings.fund_offline_db_url.startswith("sqlite") else {}
+_connect_args = (
+    {
+        "check_same_thread": False,
+        "timeout": 30,
+    }
+    if settings.fund_offline_db_url.startswith("sqlite")
+    else {}
+)
 
 offline_engine = create_engine(
     settings.fund_offline_db_url,
@@ -31,6 +38,19 @@ offline_engine = create_engine(
     connect_args=_connect_args,
 )
 OfflineSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=offline_engine, future=True)
+
+
+if settings.fund_offline_db_url.startswith("sqlite"):
+
+    @event.listens_for(offline_engine, "connect")
+    def _set_offline_sqlite_pragma(dbapi_conn, _):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        try:
+            cur.execute("PRAGMA journal_mode=WAL;")
+            cur.execute("PRAGMA busy_timeout=30000;")
+            cur.execute("PRAGMA synchronous=NORMAL;")
+        finally:
+            cur.close()
 
 
 def get_offline_db() -> Generator[Session, None, None]:

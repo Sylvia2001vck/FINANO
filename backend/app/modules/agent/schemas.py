@@ -34,3 +34,15 @@ class LLMProbeRequest(BaseModel):
     model: str = Field(default="", description="可选覆盖模型名；为空时使用 FINANCE_MODEL_NAME / QWEN_FINANCE_MODEL")
     prompt: str = Field(min_length=1, max_length=2000, description="调试用短 prompt")
     timeout_sec: float = Field(default=10.0, ge=2.0, le=60.0, description="单次探针超时（秒）")
+
+
+class MAFBReportSaveRequest(BaseModel):
+    fund_code: str = Field(min_length=4, max_length=10)
+    include_fbti: bool = Field(default=True)
+    title: str = Field(default="", max_length=120)
+    final_report: dict[str, Any]
+
+
+class MAFBReportUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    is_pinned: bool | None = Field(default=None)

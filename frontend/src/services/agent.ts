@@ -311,6 +311,89 @@ export interface KlineShadowResponse {
   data_version?: Record<string, unknown>;
 }
 
+export interface MAFBAssetItem {
+  id: number;
+  title: string;
+  fund_code: string;
+  include_fbti: boolean;
+  weighted_total?: number | null;
+  verdict?: string | null;
+  created_at?: string | null;
+  is_pinned?: boolean;
+}
+
+export interface MAFBAssetDetail {
+  id: number;
+  title: string;
+  fund_code: string;
+  include_fbti: boolean;
+  created_at?: string | null;
+  final_report: Record<string, unknown>;
+}
+
+export async function saveMafbReportAsset(payload: {
+  fund_code: string;
+  include_fbti?: boolean;
+  title?: string;
+  final_report: Record<string, unknown>;
+}) {
+  const response = await api.post<ApiEnvelope<{ id: number; title: string; fund_code: string; created_at?: string | null }>>(
+    "/agent/reports/save",
+    payload,
+    { skipGlobalLoading: true, timeout: 30_000 }
+  );
+  return response.data.data;
+}
+
+export async function listMafbReportAssets(params?: {
+  limit?: number;
+  fund_code?: string;
+  date_from?: string;
+  date_to?: string;
+}) {
+  const response = await api.get<ApiEnvelope<{ items: MAFBAssetItem[]; total: number }>>("/agent/reports", {
+    params: {
+      limit: params?.limit ?? 30,
+      fund_code: params?.fund_code || undefined,
+      date_from: params?.date_from || undefined,
+      date_to: params?.date_to || undefined
+    },
+    skipGlobalLoading: true,
+    timeout: 20_000
+  });
+  return response.data.data;
+}
+
+export async function getMafbReportAsset(reportId: number) {
+  const response = await api.get<ApiEnvelope<MAFBAssetDetail>>(`/agent/reports/${reportId}`, {
+    skipGlobalLoading: true,
+    timeout: 20_000
+  });
+  return response.data.data;
+}
+
+export async function updateMafbReportAsset(
+  reportId: number,
+  payload: {
+    title?: string;
+    is_pinned?: boolean;
+  }
+) {
+  const response = await api.patch<ApiEnvelope<{ id: number }>>(`/agent/reports/${reportId}`, payload, {
+    skipGlobalLoading: true,
+    timeout: 20_000
+  });
+  return response.data.data;
+}
+
+export async function deleteMafbReportAsset(reportId: number) {
+  const response = await api.delete<ApiEnvelope<{ id: number }>>(`/agent/reports/${reportId}`, {
+    skipGlobalLoading: true,
+    timeout: 20_000
+  });
+  return response.data.data;
+}
+
 export async function fetchKlineShadowSegments(
   code: string,
   topK = 5,

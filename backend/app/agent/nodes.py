@@ -991,6 +991,15 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
         nav_vals = [float(r.get("nav") or 0.0) for r in nav_rows if r.get("nav") is not None]
         rets = [float(r.get("daily_return") or 0.0) for r in nav_rows if r.get("daily_return") is not None]
         fund["nav_points_lookback"] = len(nav_rows)
+    nav_rows_for_technical = [
+        {
+            "date": str(r.get("date") or "")[:10],
+            "nav": float(r.get("nav") or 0.0),
+            "daily_return": float(r.get("daily_return") or 0.0),
+        }
+        for r in nav_rows
+        if r.get("date") is not None and r.get("nav") is not None
+    ][-420:]
 
     # Only merge non-empty fundamental fields; keep snapshot/preheat values when akshare times out.
     if fundamental_snap:
@@ -1149,6 +1158,7 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
         note += f" 关键字段待补齐：{','.join(missing_all)}。"
     return {
         "fund_data": fund,
+        "nav_rows_for_technical": nav_rows_for_technical,
         "fund_code": code,
         "compliance_notes": [note],
     }
@@ -1374,7 +1384,11 @@ def node_fundamental(state: MAFBState) -> dict[str, Any]:
 def node_technical(state: MAFBState) -> dict[str, Any]:
     fund = state.get("fund_data") or {}
     code = str(fund.get("code") or state.get("fund_code") or "").strip()
-    retrieval = retrieve_technical_matches(code, top_k=int(settings.technical_retrieval_top_k))
+    retrieval = retrieve_technical_matches(
+        code,
+        top_k=int(settings.technical_retrieval_top_k),
+        nav_rows=list(state.get("nav_rows_for_technical") or []),
+    )
     if retrieval.get("ok"):
         fund["technical_retrieval"] = retrieval
         emit_agent_event(

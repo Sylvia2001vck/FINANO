@@ -34,6 +34,7 @@ from app.modules.user.router_fbti import router as fbti_user_router
 from app.agent.kline_faiss_store import load_index_from_disk
 
 from app.modules.community import models as _community_models  # noqa: F401
+from app.modules.agent import models as _agent_models  # noqa: F401
 from app.modules.hot import models as _hot_models  # noqa: F401
 from app.modules.note import models as _note_models  # noqa: F401
 from app.modules.replay import models as _replay_models  # noqa: F401

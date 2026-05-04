@@ -1,6 +1,8 @@
 services:
   mysql:
     image: mysql:8.0
+    # 实例/Docker 重启后自动拉起（除非曾手动 docker compose stop）
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -14,6 +16,7 @@ services:
       retries: 20
 
   backend:
+    restart: unless-stopped
     build: ./backend
     depends_on:
       mysql:
@@ -34,6 +37,7 @@ services:
       - "8000:8000"
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       args:

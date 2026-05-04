@@ -1,4 +1,4 @@
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -13,7 +13,9 @@ COPY . .
 ARG NODE_MEMORY_MB=1024
 ENV NODE_OPTIONS=--max-old-space-size=${NODE_MEMORY_MB}
 
-RUN npm run build
+# 拆成两步：Docker 日志里能看到 tsc 已过；vite 加 logLevel 避免长时间无输出像「卡死」
+RUN npm exec -- tsc --pretty false
+RUN npm exec -- vite build --logLevel info
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html

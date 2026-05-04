@@ -161,19 +161,43 @@ export default function TradePage() {
     }
   }, [selectedTradeIds]);
 
-  const loadCurveBySymbol = useCallback(async (symbol: string) => {
-    const code = String(symbol || "").trim();
-    if (!code || curveMap[code] || curveLoadingMap[code]) return;
-    setCurveLoadingMap((m) => ({ ...m, [code]: true }));
-    try {
-      const data = await fetchTradeCurve(code);
-      setCurveMap((m) => ({ ...m, [code]: data }));
-    } catch {
-      setCurveMap((m) => ({ ...m, [code]: null }));
-    } finally {
-      setCurveLoadingMap((m) => ({ ...m, [code]: false }));
-    }
-  }, [curveLoadingMap, curveMap]);
+  /** 当前展开行的标的曲线：交易列表或展开集合变化时重新拉取，避免同代码新增/删除后仍显示旧买卖点 */
+  useEffect(() => {
+    if (!expandedTradeIds.length) return;
+
+    const symbols = [
+      ...new Set(
+        expandedTradeIds
+          .map((id) => trades.find((t) => t.id === id)?.symbol)
+          .filter((s): s is string => Boolean(String(s || "").trim()))
+          .map((s) => String(s).trim())
+      )
+    ];
+    if (!symbols.length) return;
+
+    let cancelled = false;
+
+    symbols.forEach((code) => {
+      setCurveLoadingMap((m) => ({ ...m, [code]: true }));
+    });
+
+    void Promise.all(
+      symbols.map(async (code) => {
+        try {
+          const data = await fetchTradeCurve(code);
+          if (!cancelled) setCurveMap((m) => ({ ...m, [code]: data }));
+        } catch {
+          if (!cancelled) setCurveMap((m) => ({ ...m, [code]: null }));
+        } finally {
+          if (!cancelled) setCurveLoadingMap((m) => ({ ...m, [code]: false }));
+        }
+      })
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trades, expandedTradeIds]);
 
   const persistNoteView = (mode: NoteViewMode) => {
     setNoteView(mode);
@@ -302,14 +326,10 @@ export default function TradePage() {
             expandedRowKeys: expandedTradeIds,
             rowExpandable: (record) => Boolean(record.symbol),
             onExpand: (expanded, record) => {
-              const code = record.symbol;
               setExpandedTradeIds((keys) => {
                 if (expanded) return keys.includes(record.id) ? keys : [...keys, record.id];
                 return keys.filter((k) => k !== record.id);
               });
-              if (expanded) {
-                void loadCurveBySymbol(code);
-              }
             },
             expandedRowRender: (record) => (
               <div>

@@ -34,7 +34,11 @@ services:
       - "8000:8000"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 小内存 VPS 勿超过物理内存一半；需要时在主机 .env 设 FRONTEND_NODE_MEMORY_MB=1536
+        NODE_MEMORY_MB: ${FRONTEND_NODE_MEMORY_MB:-1024}
     # 主机 80 常被系统 Nginx/其它站占用；8080 若给其它项目，FINANO 用 8081 → 访问 http://IP:8081/
     ports:
       - "8081:80"

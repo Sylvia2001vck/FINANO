@@ -1,0 +1,7 @@
+# 与 docker-compose.yml 叠加以避免在小内存 VPS 上执行 vite build。
+# CI 在 GitHub Runner 上打好 frontend/dist 并上传到服务器后再用此文件构建前端镜像。
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prebuilt

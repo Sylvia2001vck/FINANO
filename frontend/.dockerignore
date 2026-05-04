@@ -1,5 +1,5 @@
 node_modules
-dist
+# 勿忽略 dist：Dockerfile.prebuilt 需从构建上下文复制 CI 上传的 dist（多阶段 Dockerfile 仍以容器内 npm build 为准）
 .git
 .gitignore
 *.md

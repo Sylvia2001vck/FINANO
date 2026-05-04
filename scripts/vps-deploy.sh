@@ -17,6 +17,8 @@ if [[ ! -d frontend/dist ]] || [[ -z "$(ls -A frontend/dist 2>/dev/null)" ]]; th
   exit 1
 fi
 
-"${COMPOSE[@]}" build --parallel 1 backend
+# 分两次 build：先 backend 再 frontend，避免在同一 compose build 里并行抢内存。
+# 切勿写「--parallel 1」：Compose v2 里 --parallel 无参数，数字会被当成服务名 → no such service: 1
+"${COMPOSE[@]}" build backend
 "${COMPOSE[@]}" build frontend
 "${COMPOSE[@]}" up -d

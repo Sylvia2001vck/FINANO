@@ -17,5 +17,8 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.DEPLOY_PORT }}
+          # VPS 重启后首次 Docker build（尤其 vite chunk）容易超过默认命令超时
+          timeout: 3m
+          command_timeout: 45m
           script: |
             /opt/finano/deploy.sh

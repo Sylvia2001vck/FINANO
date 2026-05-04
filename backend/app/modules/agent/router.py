@@ -68,6 +68,7 @@ def _initial_state(payload: MAFBRunRequest, risk_preference: int | None, fbti_pr
         "rag_chunks": [],
         "proposed_portfolio": [],
         "technical_retrieval": {},
+        "nav_data_source": (payload.nav_data_source or "").strip() or None,
     }
 
 

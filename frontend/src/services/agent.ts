@@ -5,6 +5,8 @@ export interface MAFBRunPayload {
   fund_code: string;
   /** 是否将账户已保存的 FBTI 纳入画像与后续推理 */
   include_fbti?: boolean;
+  /** 净值/K线主数据源：auto | eastmoney_cn | hk_etf */
+  nav_data_source?: string | null;
 }
 
 export interface MAFBRunData {

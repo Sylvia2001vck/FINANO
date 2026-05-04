@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AgentProfileSave(BaseModel):
@@ -23,6 +23,22 @@ class MAFBRunRequest(BaseModel):
         default=True,
         description="为 true 时将账户已保存的 FBTI 纳入画像与后续推理；为 false 时仅用账户风险偏好档位（不含人格偏好）",
     )
+    nav_data_source: str | None = Field(
+        default=None,
+        description="净值/K线主数据源：auto | eastmoney_cn | hk_etf；空则使用 NAV_DATA_SOURCE_DEFAULT",
+    )
+
+    @field_validator("nav_data_source", mode="before")
+    @classmethod
+    def _strip_nav_src(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip().lower()
+        if not s:
+            return None
+        if s in ("auto", "eastmoney_cn", "hk_etf"):
+            return s
+        raise ValueError("nav_data_source 须为 auto、eastmoney_cn、hk_etf 之一")
 
 
 class MAFBRunResponse(BaseModel):

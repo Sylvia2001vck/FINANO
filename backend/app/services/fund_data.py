@@ -179,11 +179,25 @@ def parse_lsjz_apidata_body(body: str) -> list[dict[str, Any]]:
     return rows
 
 
-def fetch_fund_nav_history(fund_code: str, days: int = 90, timeout: float = 15.0) -> list[dict[str, Any]]:
+def fetch_fund_nav_history(
+    fund_code: str,
+    days: int = 90,
+    timeout: float = 15.0,
+    *,
+    data_source: str | None = None,
+) -> list[dict[str, Any]]:
     """
-    拉取基金历史净值（近若干交易日，受单页条数限制最多一次取 200 条）。
-    失败返回 []，不抛异常。
+    拉取基金/标的的历史净值序列（近若干交易日）。
+    data_source：auto | eastmoney_cn | hk_etf；None 时退回 NAV_DATA_SOURCE_DEFAULT + 代码推断。
+    港股分支使用 AkShare 日线收盘价作为 nav 代理，结构与大陆净值序列一致。
     """
+    from app.services.hk_market_data import fetch_hk_equity_daily_as_nav_history
+    from app.services.nav_data_source import resolve_nav_data_source
+
+    resolved = resolve_nav_data_source(fund_code, data_source)
+    if resolved == "hk_etf":
+        return fetch_hk_equity_daily_as_nav_history(fund_code, days=days, timeout=timeout)
+
     code = fund_code.strip()
     if not re.fullmatch(r"\d{6}", code):
         return []

@@ -39,6 +39,7 @@ class MAFBState(TypedDict, total=False):
     nav_rows_for_technical: list[dict[str, Any]]
     rag_chunks: list[str]
     technical_retrieval: Annotated[dict[str, Any], _merge_dict_any]
+    nav_data_source: str | None
 
     agent_scores: Annotated[dict[str, int], _merge_scores]
     agent_reasons: Annotated[dict[str, str], _merge_reasons]

@@ -658,7 +658,7 @@ export default function MAFBPage() {
     }
   };
 
-  const onRun = async (values: { fund_code: string; include_fbti?: boolean }) => {
+  const onRun = async (values: { fund_code: string; include_fbti?: boolean; nav_data_source?: string }) => {
     setLoading(true);
     setRunStage("正在提交任务…");
     setRunTrace([]);
@@ -669,7 +669,8 @@ export default function MAFBPage() {
     try {
       const submit = await runMafbAsync({
         fund_code: values.fund_code.trim(),
-        include_fbti: values.include_fbti !== false
+        include_fbti: values.include_fbti !== false,
+        nav_data_source: values.nav_data_source?.trim() || "auto"
       });
       let cursor = 0;
       let done = false;
@@ -918,21 +919,25 @@ export default function MAFBPage() {
           layout="vertical"
           initialValues={{
             fund_code: "510300",
-            include_fbti: true
+            include_fbti: true,
+            nav_data_source: "auto"
           }}
         >
           <Form.Item
             label="基金 / ETF 代码"
             name="fund_code"
             rules={[
-              { required: true, message: "请输入基金代码" },
-              { pattern: /^\d{6}$/, message: "须为 6 位数字代码" }
+              { required: true, message: "请输入代码" },
+              {
+                pattern: /^(\d{5}|\d{6})(\.[Hh][Kk])?$/,
+                message: "大陆基金/ETF 为 6 位数字；港股常见为 5 位，可加后缀 .HK",
+              }
             ]}
           >
             <Space.Compact style={{ width: "100%", maxWidth: 400 }}>
               <Input
-                placeholder="如 510300"
-                maxLength={6}
+                placeholder="如 510300 或 02828 / 02828.HK"
+                maxLength={10}
                 style={{ flex: 1 }}
                 disabled={agentOpBusy}
                 onBlur={(e) => {
@@ -948,6 +953,21 @@ export default function MAFBPage() {
               />
             </Space.Compact>
           </Form.Item>
+          <Form.Item
+            label="净值 / K 线数据源"
+            name="nav_data_source"
+            tooltip="技术面与风控里的净值序列据此切换：大陆标的默认走天天基金；港股 ETF 选「港股日线」或输入 5 位代码自动识别。"
+          >
+            <Segmented
+              disabled={agentOpBusy}
+              style={{ width: "100%", maxWidth: 520 }}
+              options={[
+                { label: "自动", value: "auto" },
+                { label: "天天基金（大陆）", value: "eastmoney_cn" },
+                { label: "港股日线（AkShare）", value: "hk_etf" }
+              ]}
+            />
+          </Form.Item>
           <Form.Item name="include_fbti" valuePropName="checked">
             <Checkbox disabled={agentOpBusy}>
               纳入 FBTI（使用账户已保存的金融人格参与画像与后续智能体推理）
@@ -960,8 +980,8 @@ export default function MAFBPage() {
               disabled={simBusy}
               onClick={async () => {
                 try {
-                  const v = await form.validateFields(["fund_code", "include_fbti"]);
-                  await onRun(v as { fund_code: string; include_fbti?: boolean });
+                  const v = await form.validateFields(["fund_code", "include_fbti", "nav_data_source"]);
+                  await onRun(v as { fund_code: string; include_fbti?: boolean; nav_data_source?: string });
                 } catch {
                   /* validateFields */
                 }
@@ -971,7 +991,7 @@ export default function MAFBPage() {
             </Button>
             <Button
               icon={<LineChartOutlined />}
-              disabled={!/^\d{6}$/.test((watchedFundCode ?? "").trim())}
+              disabled={!/^(\d{5}|\d{6})(\.[Hh][Kk])?$/.test(String(watchedFundCode ?? "").trim())}
               onClick={() => void fundNavRef.current?.reload()}
             >
               查询基金净值

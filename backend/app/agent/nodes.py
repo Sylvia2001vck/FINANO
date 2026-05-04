@@ -31,6 +31,11 @@ _WEIGHTS = {
 }
 
 
+def _maf_nav_hist(code: str, days: int, timeout: float, state: MAFBState) -> list[dict[str, Any]]:
+    """按单次 MAFB 请求的 nav_data_source 拉净值/K 线序列（大陆 vs 港股）。"""
+    return fetch_fund_nav_history(code, days=days, timeout=timeout, data_source=state.get("nav_data_source"))
+
+
 def _clamp_score(value: float) -> int:
     return max(-2, min(2, int(round(value))))
 
@@ -123,8 +128,8 @@ def _kline_feature_tags(nav_rows: list[dict[str, Any]]) -> dict[str, str]:
     }
 
 
-def _build_kline_symbolic_chunks(code: str, rows: list[dict[str, Any]], days: int = 80) -> list[str]:
-    nav_rows = fetch_fund_nav_history(code, days=days, timeout=8.0)
+def _build_kline_symbolic_chunks(code: str, rows: list[dict[str, Any]], days: int = 80, *, nav_ds: str | None = None) -> list[str]:
+    nav_rows = fetch_fund_nav_history(code, days=days, timeout=8.0, data_source=nav_ds)
     segs = _paa_segments_from_nav(nav_rows, bins=8)
     tags = _kline_feature_tags(nav_rows)
     top = rows[0] if rows else {}
@@ -410,8 +415,8 @@ def _build_risk_summary(
     corr_hs300 = _corr_with_index_map(nav_rows, idx_hs300)
     corr_ndq = _corr_with_index_map(nav_rows, idx_nasdaq)
     if corr_hs300 is None or corr_ndq is None:
-        hs300_rows = fetch_fund_nav_history("510300", days=260, timeout=8.0)
-        ndq_rows = fetch_fund_nav_history("513100", days=260, timeout=8.0)
+        hs300_rows = fetch_fund_nav_history("510300", days=260, timeout=8.0, data_source="eastmoney_cn")
+        ndq_rows = fetch_fund_nav_history("513100", days=260, timeout=8.0, data_source="eastmoney_cn")
         corr_hs300 = corr_hs300 if corr_hs300 is not None else _calc_corr_by_daily_returns(nav_rows, hs300_rows)
         corr_ndq = corr_ndq if corr_ndq is not None else _calc_corr_by_daily_returns(nav_rows, ndq_rows)
     concentration = fund.get("stock_top5_concentration")
@@ -832,12 +837,38 @@ def node_user_profiling(state: MAFBState) -> dict[str, Any]:
 
 
 def node_data_preheat(state: MAFBState) -> dict[str, Any]:
-    code = (state.get("fund_code") or "510300").strip()
-    fund = get_fund_by_code(code, include_live=False)
+    from app.services.nav_data_source import resolve_nav_data_source
+
+    code0 = (state.get("fund_code") or "510300").strip()
+    resolved_src = resolve_nav_data_source(code0, state.get("nav_data_source"))
+
+    fund = get_fund_by_code(code0, include_live=False)
     if not fund:
-        code = "510300"
-        fund = get_fund_by_code(code, include_live=False) or {}
+        if resolved_src == "hk_etf":
+            sym_raw = code0.upper().replace(".HK", "").strip()
+            digits = "".join(ch for ch in sym_raw if ch.isdigit())
+            canon = digits.zfill(5) if digits else sym_raw
+            code = canon or code0
+            fund = {
+                "code": code,
+                "name": f"港股标的·{code}",
+                "track": "港股ETF/股票",
+                "source_notes": ["hk_catalog_stub", "nav_series_source=hk_etf"],
+            }
+            emit_agent_event("nav_source", f"港股日线数据源（AkShare）：code={code}")
+        else:
+            code = "510300"
+            fund = get_fund_by_code(code, include_live=False) or {}
+    else:
+        code = code0
+
     fund = dict(fund or {})
+    notes0 = list(fund.get("source_notes") or [])
+    tag = f"nav_series_source={resolved_src}"
+    if tag not in notes0:
+        notes0.append(tag)
+        fund["source_notes"] = notes0
+
     # eastmoney_full 目录里若为 0，通常是占位而非真实值；先归空，避免被当成有效硬事实。
     for k in (
         "aum_billion",
@@ -873,7 +904,7 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
     emit_agent_event("preheat_step", f"并行预热启动：code={code}")
     technical_dtw_rows: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=3) as pool:
-        fut_nav = pool.submit(fetch_fund_nav_history, code, 260, 8.0)
+        fut_nav = pool.submit(_maf_nav_hist, code, 260, 8.0, state)
         fut_fundamental = pool.submit(fetch_fund_fundamental_snapshot, code)
         fut_live = pool.submit(fetch_fund_live_quote, code, 6.0)
 
@@ -921,7 +952,7 @@ def node_data_preheat(state: MAFBState) -> dict[str, Any]:
     if len(nav_rows) < 20:
         # 二次拉取更长窗口，降低接口偶发空窗对技术面链路的影响
         emit_agent_event("preheat_step", f"净值点位不足，重试拉取：code={code}, days=360")
-        nav_rows = fetch_fund_nav_history(code, days=360, timeout=10.0)
+        nav_rows = _maf_nav_hist(code, 360, 10.0, state)
         emit_agent_event("preheat_retry", f"nav_history retry for {code}: points={len(nav_rows)}")
     nav_vals = [float(r.get("nav") or 0.0) for r in nav_rows if r.get("nav") is not None]
     rets = [float(r.get("daily_return") or 0.0) for r in nav_rows if r.get("daily_return") is not None]

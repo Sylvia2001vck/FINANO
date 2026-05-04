@@ -136,6 +136,8 @@ class Settings(BaseSettings):
     replay_top_k: int = Field(default=3, ge=1, le=10, alias="REPLAY_TOP_K")
     replay_embedding_model: str = Field(default="text-embedding-v3", alias="REPLAY_EMBEDDING_MODEL")
     replay_enable_faiss: bool = Field(default=True, alias="REPLAY_ENABLE_FAISS")
+    # 净值序列默认数据源：auto=按代码推断；eastmoney_cn=天天基金；hk_etf=AkShare 港股日线
+    nav_data_source_default: str = Field(default="auto", alias="NAV_DATA_SOURCE_DEFAULT")
 
     @property
     def cors_origins(self) -> List[str]:

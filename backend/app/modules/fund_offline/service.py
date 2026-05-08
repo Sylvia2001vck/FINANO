@@ -91,6 +91,7 @@ def sync_fund_nav_snapshot(
     full: bool = False,
     max_codes: int | None = None,
     rebuild_index: bool = True,
+    max_duration_sec: float | None = None,
     progress_every: int = 100,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
@@ -115,6 +116,9 @@ def sync_fund_nav_snapshot(
     end_date = date.today()
     rows_upserted = 0
     code_done = 0
+    limited_by_budget = False
+    started_mono = time.monotonic()
+    budget_sec = float(max_duration_sec) if max_duration_sec and max_duration_sec > 0 else None
     progress_every = max(1, int(progress_every))
 
     try:
@@ -132,6 +136,9 @@ def sync_fund_nav_snapshot(
             except Exception:
                 logger.debug("offline progress callback(start) failed", exc_info=True)
         for row in codes:
+            if budget_sec is not None and (time.monotonic() - started_mono) >= budget_sec:
+                limited_by_budget = True
+                break
             code = str(row.get("code") or "").strip()
             if not code:
                 continue
@@ -149,14 +156,16 @@ def sync_fund_nav_snapshot(
                 db.commit()
                 if progress_callback:
                     try:
+                        elapsed = round((datetime.utcnow() - started).total_seconds(), 3)
                         progress_callback(
                             {
                                 "stage": "running",
                                 "codes_total": total_codes,
                                 "codes_processed": code_done,
                                 "rows_upserted": rows_upserted,
-                                "elapsed_sec": round((datetime.utcnow() - started).total_seconds(), 3),
+                                "elapsed_sec": elapsed,
                                 "last_code": code,
+                                "limited_by_budget": bool(budget_sec is not None and elapsed >= budget_sec),
                             }
                         )
                     except Exception:
@@ -196,6 +205,8 @@ def sync_fund_nav_snapshot(
             "codes_processed": code_done,
             "rows_upserted": rows_upserted,
             "duration_sec": round(duration, 3),
+            "limited_by_budget": limited_by_budget,
+            "budget_sec": budget_sec,
             "started_at": started.isoformat(),
             "finished_at": finished.isoformat(),
             "index": index_result,
@@ -232,6 +243,8 @@ def sync_fund_nav_snapshot(
             "codes_processed": code_done,
             "rows_upserted": rows_upserted,
             "duration_sec": round(duration, 3),
+            "limited_by_budget": limited_by_budget,
+            "budget_sec": budget_sec,
             "error": f"{type(e).__name__}: {e}",
         }
 
@@ -248,11 +261,19 @@ def start_offline_sync_scheduler():
 
     def _worker():
         interval = max(1800, int(settings.fund_offline_sync_interval_sec))
+        startup_delay = max(0, int(settings.fund_offline_sync_startup_delay_sec))
+        if startup_delay > 0 and stop_event.wait(startup_delay):
+            return
         while not stop_event.is_set():
             db = OfflineSessionLocal()
             try:
                 full = _need_full_refresh(datetime.now())
-                sync_fund_nav_snapshot(db, full=full, rebuild_index=True)
+                sync_fund_nav_snapshot(
+                    db,
+                    full=full,
+                    rebuild_index=bool(settings.fund_offline_rebuild_index_on_scheduler),
+                    max_duration_sec=float(settings.fund_offline_sync_round_budget_sec),
+                )
             except Exception:
                 logger.exception("offline scheduler worker failed")
             finally:
@@ -277,6 +298,9 @@ def get_offline_status(db: Session) -> dict[str, Any]:
         "enabled": bool(settings.fund_offline_enabled),
         "db_url": settings.fund_offline_db_url,
         "sync_interval_sec": int(settings.fund_offline_sync_interval_sec),
+        "startup_delay_sec": int(settings.fund_offline_sync_startup_delay_sec),
+        "round_budget_sec": int(settings.fund_offline_sync_round_budget_sec),
+        "scheduler_rebuild_index": bool(settings.fund_offline_rebuild_index_on_scheduler),
         "max_codes": int(settings.fund_offline_sync_max_codes),
         "window_start": settings.fund_offline_sync_start_date,
         "rows_total": int(total_rows),

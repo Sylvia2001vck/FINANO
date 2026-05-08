@@ -124,6 +124,25 @@ class Settings(BaseSettings):
     fund_offline_sync_full_weekday: int = Field(default=6, ge=0, le=6, alias="FUND_OFFLINE_SYNC_FULL_WEEKDAY")
     fund_offline_sync_max_codes: int = Field(default=5000, ge=50, le=50000, alias="FUND_OFFLINE_SYNC_MAX_CODES")
     fund_offline_sync_start_date: str = Field(default="2019-01-01", alias="FUND_OFFLINE_SYNC_START_DATE")
+    # scheduler 保守模式：启动后延迟首轮同步，避免与冷启动抢资源
+    fund_offline_sync_startup_delay_sec: int = Field(
+        default=900,
+        ge=0,
+        le=86400,
+        alias="FUND_OFFLINE_SYNC_STARTUP_DELAY_SEC",
+    )
+    # scheduler 单轮预算上限（秒）：达到后提前结束本轮，下一轮再续跑
+    fund_offline_sync_round_budget_sec: int = Field(
+        default=600,
+        ge=60,
+        le=86400,
+        alias="FUND_OFFLINE_SYNC_ROUND_BUDGET_SEC",
+    )
+    # scheduler 默认不重建索引，降低磁盘与内存峰值；可按需手动触发重建
+    fund_offline_rebuild_index_on_scheduler: bool = Field(
+        default=False,
+        alias="FUND_OFFLINE_REBUILD_INDEX_ON_SCHEDULER",
+    )
     # K线离线特征索引
     kline_window_size_days: int = Field(default=20, ge=10, le=90, alias="KLINE_WINDOW_SIZE_DAYS")
     kline_paa_dims: int = Field(default=5, ge=2, le=20, alias="KLINE_PAA_DIMS")

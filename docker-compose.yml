@@ -18,6 +18,9 @@ services:
   backend:
     restart: unless-stopped
     build: ./backend
+    volumes:
+      # 持久化离线净值库与 K 线索引，避免容器重建后从空库重新灌数据
+      - backend_data:/app/data
     depends_on:
       mysql:
         condition: service_healthy
@@ -51,3 +54,4 @@ services:
 
 volumes:
   mysql_data:
+  backend_data:

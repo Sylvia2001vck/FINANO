@@ -66,7 +66,8 @@ def _calc_momentum(nav_vals: list[float], lb: int = 60) -> float | None:
 
 
 def _build_snapshot_blob(code: str, name: str, risk_rating: int | None = None) -> dict[str, Any]:
-    nav_rows = fetch_fund_nav_history(code, days=280, timeout=12.0)
+    lookback_days = max(7, int(settings.fund_snapshot_initial_lookback_days))
+    nav_rows = fetch_fund_nav_history(code, days=lookback_days, timeout=12.0)
     nav_vals = [float(x.get("nav") or 0.0) for x in nav_rows if x.get("nav") is not None]
     rets = [float(x.get("daily_return") or 0.0) for x in nav_rows if x.get("daily_return") is not None]
     sharpe = _calc_sharpe(rets)
@@ -95,15 +96,29 @@ def refresh_fund_snapshot_batch(db: Session, *, force: bool = False) -> dict[str
     codes = list_funds_catalog_only()
     if max_codes > 0:
         codes = codes[: max_codes]
+    total_target = len(codes)
+    existing_codes: set[str] = set()
     if not force:
-        existed = db.scalar(select(FundDailySnapshot.id).where(FundDailySnapshot.batch_date == today).limit(1))
-        if existed:
-            return {"ok": True, "batch_date": today.isoformat(), "refreshed": 0, "skipped": True}
+        existing_codes = set(
+            db.scalars(select(FundDailySnapshot.fund_code).where(FundDailySnapshot.batch_date == today))
+        )
+        if len(existing_codes) >= total_target:
+            return {
+                "ok": True,
+                "batch_date": today.isoformat(),
+                "refreshed": 0,
+                "skipped": True,
+                "already_ready": len(existing_codes),
+                "target_total": total_target,
+            }
 
     refreshed = 0
+    commit_every = max(1, int(settings.fund_snapshot_commit_every))
     for row in codes:
         code = str(row.get("code") or "").strip()
         if not code:
+            continue
+        if not force and code in existing_codes:
             continue
         name = str(row.get("name") or "")
         risk_rating = row.get("risk_rating")
@@ -130,10 +145,17 @@ def refresh_fund_snapshot_batch(db: Session, *, force: bool = False) -> dict[str
         item.stock_top10_concentration = blob.get("stock_top10_concentration")
         item.fund_blob_json = json.dumps(blob, ensure_ascii=False)
         refreshed += 1
-        if refreshed % 100 == 0:
-            db.flush()
+        if refreshed % commit_every == 0:
+            db.commit()
     db.commit()
-    return {"ok": True, "batch_date": today.isoformat(), "refreshed": refreshed, "skipped": False}
+    return {
+        "ok": True,
+        "batch_date": today.isoformat(),
+        "refreshed": refreshed,
+        "skipped": False,
+        "already_ready": len(existing_codes),
+        "target_total": total_target,
+    }
 
 
 def _read_latest_snapshot(db: Session, code: str) -> dict[str, Any] | None:
@@ -202,6 +224,10 @@ def get_fund_snapshot_status(db: Session) -> dict[str, Any]:
     return {
         "enabled": bool(settings.fund_snapshot_scheduler_enabled),
         "refresh_interval_sec": int(settings.fund_snapshot_refresh_interval_sec),
+        "refresh_interval_effective_sec": max(86400, int(settings.fund_snapshot_refresh_interval_sec)),
+        "refresh_startup_delay_sec": int(settings.fund_snapshot_startup_delay_sec),
+        "initial_lookback_days": int(settings.fund_snapshot_initial_lookback_days),
+        "commit_every": int(settings.fund_snapshot_commit_every),
         "daily_target_codes": target,
         "today_count": int(today_count or 0),
         "today_progress": round(progress, 4),
@@ -217,7 +243,11 @@ def start_fund_snapshot_scheduler(session_factory):
     stop_event = threading.Event()
 
     def _worker():
-        interval = max(1800, int(settings.fund_snapshot_refresh_interval_sec))
+        # 快照任务按“日更”设计：最小周期 1 天，避免 30 分钟高频重复拉取。
+        interval = max(86400, int(settings.fund_snapshot_refresh_interval_sec))
+        startup_delay = max(0, int(settings.fund_snapshot_startup_delay_sec))
+        if startup_delay > 0 and stop_event.wait(startup_delay):
+            return
         while not stop_event.is_set():
             db = session_factory()
             try:

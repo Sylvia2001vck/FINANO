@@ -258,6 +258,9 @@ def start_hot_scheduler(session_factory):
 
     def _worker():
         interval = max(300, int(settings.hot_refresh_interval_sec))
+        startup_delay = max(0, int(settings.hot_startup_delay_sec))
+        if startup_delay > 0 and stop_event.wait(startup_delay):
+            return
         while not stop_event.is_set():
             db = session_factory()
             try:

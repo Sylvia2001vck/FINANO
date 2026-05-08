@@ -146,7 +146,11 @@ def sync_fund_nav_snapshot(
                 start_date = start_default
             else:
                 latest = _latest_date_by_code(db, code)
-                start_date = (latest - timedelta(days=4)) if latest else (end_date - timedelta(days=120))
+                start_date = (
+                    latest - timedelta(days=4)
+                    if latest
+                    else (end_date - timedelta(days=max(7, int(settings.fund_offline_initial_lookback_days))))
+                )
             if start_date > end_date:
                 start_date = end_date - timedelta(days=5)
             points = _pull_points(code, start_date, end_date)
@@ -260,7 +264,8 @@ def start_offline_sync_scheduler():
     stop_event = threading.Event()
 
     def _worker():
-        interval = max(1800, int(settings.fund_offline_sync_interval_sec))
+        # 离线净值仓按“日更增量”设计：最小周期 1 天，避免高频重复拉取。
+        interval = max(86400, int(settings.fund_offline_sync_interval_sec))
         startup_delay = max(0, int(settings.fund_offline_sync_startup_delay_sec))
         if startup_delay > 0 and stop_event.wait(startup_delay):
             return
@@ -298,10 +303,12 @@ def get_offline_status(db: Session) -> dict[str, Any]:
         "enabled": bool(settings.fund_offline_enabled),
         "db_url": settings.fund_offline_db_url,
         "sync_interval_sec": int(settings.fund_offline_sync_interval_sec),
+        "sync_interval_effective_sec": max(86400, int(settings.fund_offline_sync_interval_sec)),
         "startup_delay_sec": int(settings.fund_offline_sync_startup_delay_sec),
         "round_budget_sec": int(settings.fund_offline_sync_round_budget_sec),
         "scheduler_rebuild_index": bool(settings.fund_offline_rebuild_index_on_scheduler),
         "max_codes": int(settings.fund_offline_sync_max_codes),
+        "initial_lookback_days": int(settings.fund_offline_initial_lookback_days),
         "window_start": settings.fund_offline_sync_start_date,
         "rows_total": int(total_rows),
         "codes_total": int(total_codes),

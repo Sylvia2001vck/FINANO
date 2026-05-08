@@ -106,6 +106,8 @@ class Settings(BaseSettings):
     # 热点聚合：服务端定时批处理 + 客户端读缓存
     hot_scheduler_enabled: bool = Field(default=True, alias="HOT_SCHEDULER_ENABLED")
     hot_refresh_interval_sec: int = Field(default=3600, ge=300, le=86400, alias="HOT_REFRESH_INTERVAL_SEC")
+    # 热点任务首轮延迟，避免与启动冷路径抢资源
+    hot_startup_delay_sec: int = Field(default=120, ge=0, le=86400, alias="HOT_STARTUP_DELAY_SEC")
     hot_top_n: int = Field(default=10, ge=3, le=30, alias="HOT_TOP_N")
     hot_cache_ttl_sec: int = Field(default=3900, ge=60, le=172800, alias="HOT_CACHE_TTL_SEC")
     # 基本面双数据源：天天基金移动端 + Akshare（可选）
@@ -116,24 +118,47 @@ class Settings(BaseSettings):
     # 基金日快照（全量/大批量）定时落库：优先供 preheat 读取，实时接口仅作增量覆盖
     fund_snapshot_scheduler_enabled: bool = Field(default=True, alias="FUND_SNAPSHOT_SCHEDULER_ENABLED")
     fund_snapshot_refresh_interval_sec: int = Field(default=86400, ge=1800, le=604800, alias="FUND_SNAPSHOT_REFRESH_INTERVAL_SEC")
-    fund_snapshot_daily_max_codes: int = Field(default=1200, ge=100, le=30000, alias="FUND_SNAPSHOT_DAILY_MAX_CODES")
+    # 快照首轮只看近 N 天，避免冷启动全历史拉取过重
+    fund_snapshot_initial_lookback_days: int = Field(
+        default=30,
+        ge=7,
+        le=365,
+        alias="FUND_SNAPSHOT_INITIAL_LOOKBACK_DAYS",
+    )
+    # 快照批量写库的提交步长（用于重启续跑，避免一轮失败全部重来）
+    fund_snapshot_commit_every: int = Field(default=50, ge=1, le=1000, alias="FUND_SNAPSHOT_COMMIT_EVERY")
+    # 快照任务首轮延迟，避免重启后立刻触发大批量外网拉取
+    fund_snapshot_startup_delay_sec: int = Field(
+        default=1800,
+        ge=0,
+        le=86400,
+        alias="FUND_SNAPSHOT_STARTUP_DELAY_SEC",
+    )
+    fund_snapshot_daily_max_codes: int = Field(default=100, ge=100, le=30000, alias="FUND_SNAPSHOT_DAILY_MAX_CODES")
     # 离线净值仓（SQLite）与离线同步任务
     fund_offline_enabled: bool = Field(default=True, alias="FUND_OFFLINE_ENABLED")
     fund_offline_db_url: str = Field(default="sqlite:///./data/fund_offline.db", alias="FUND_OFFLINE_DB_URL")
     fund_offline_sync_interval_sec: int = Field(default=86400, ge=1800, le=604800, alias="FUND_OFFLINE_SYNC_INTERVAL_SEC")
     fund_offline_sync_full_weekday: int = Field(default=6, ge=0, le=6, alias="FUND_OFFLINE_SYNC_FULL_WEEKDAY")
-    fund_offline_sync_max_codes: int = Field(default=5000, ge=50, le=50000, alias="FUND_OFFLINE_SYNC_MAX_CODES")
+    fund_offline_sync_max_codes: int = Field(default=200, ge=50, le=50000, alias="FUND_OFFLINE_SYNC_MAX_CODES")
+    # 离线仓首次建库窗口（后续按最新日期增量）
+    fund_offline_initial_lookback_days: int = Field(
+        default=30,
+        ge=7,
+        le=365,
+        alias="FUND_OFFLINE_INITIAL_LOOKBACK_DAYS",
+    )
     fund_offline_sync_start_date: str = Field(default="2019-01-01", alias="FUND_OFFLINE_SYNC_START_DATE")
     # scheduler 保守模式：启动后延迟首轮同步，避免与冷启动抢资源
     fund_offline_sync_startup_delay_sec: int = Field(
-        default=900,
+        default=1800,
         ge=0,
         le=86400,
         alias="FUND_OFFLINE_SYNC_STARTUP_DELAY_SEC",
     )
     # scheduler 单轮预算上限（秒）：达到后提前结束本轮，下一轮再续跑
     fund_offline_sync_round_budget_sec: int = Field(
-        default=600,
+        default=120,
         ge=60,
         le=86400,
         alias="FUND_OFFLINE_SYNC_ROUND_BUDGET_SEC",

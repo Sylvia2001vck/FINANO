@@ -42,8 +42,13 @@ jobs:
               echo "ffmpeg already installed: $(ffmpeg -version | head -1)"
               exit 0
             fi
-            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
+            export DEBIAN_FRONTEND=noninteractive
+            export NEEDRESTART_MODE=a
+            sudo -E apt-get update -qq
+            sudo -E apt-get install -y --no-install-recommends \
+              -o Dpkg::Options::="--force-confdef" \
+              -o Dpkg::Options::="--force-confold" \
+              ffmpeg
             ffmpeg -version | head -1
 
       - name: Re-encode + sync to :8082

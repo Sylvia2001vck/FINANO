@@ -13,8 +13,13 @@ fi
 
 if ! command -v nginx >/dev/null 2>&1; then
   echo "ensure-pitch-8082: installing nginx..."
-  sudo apt-get update -qq
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  sudo -E apt-get update -qq
+  sudo -E apt-get install -y --no-install-recommends \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold" \
+    nginx
 fi
 
 bash scripts/sync-pitch-deck.sh

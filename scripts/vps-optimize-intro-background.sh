@@ -11,8 +11,13 @@ LOG="/tmp/finano-optimize-video.log"
   command -v git-lfs >/dev/null 2>&1 && git lfs pull || true
   if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "Installing ffmpeg..."
-    sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
+    export DEBIAN_FRONTEND=noninteractive
+    export NEEDRESTART_MODE=a
+    sudo -E apt-get update -qq
+    sudo -E apt-get install -y --no-install-recommends \
+      -o Dpkg::Options::="--force-confdef" \
+      -o Dpkg::Options::="--force-confold" \
+      ffmpeg
   fi
   chmod +x scripts/optimize-intro-video.sh scripts/sync-pitch-deck.sh
   bash scripts/optimize-intro-video.sh

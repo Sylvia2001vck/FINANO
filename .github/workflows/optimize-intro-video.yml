@@ -1,0 +1,35 @@
+# One-click: re-encode intro MP4 on the VPS and sync to :8082 (no local ffmpeg needed).
+name: Optimize intro video (VPS)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  optimize-on-vps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-encode on Tencent Cloud and sync pitch deck
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 3m
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            cd /opt/finano
+            git fetch origin main
+            git reset --hard origin/main
+            command -v git-lfs >/dev/null 2>&1 && git lfs pull || true
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg
+            chmod +x scripts/optimize-intro-video.sh scripts/sync-pitch-deck.sh
+            bash scripts/optimize-intro-video.sh
+            bash scripts/sync-pitch-deck.sh
+            echo "========== sizes =========="
+            ls -lh pitch-deck/assets/finano_concept.mp4 pitch-deck/assets/finano_concept.source.mp4 2>/dev/null || true
+            ls -lh /var/www/finano-pitch-ppt/assets/finano_concept.mp4
+            curl -sS -o /dev/null -w "HTTP %{http_code}, Content-Length: %{size_download}\n" http://127.0.0.1:8082/assets/finano_concept.mp4

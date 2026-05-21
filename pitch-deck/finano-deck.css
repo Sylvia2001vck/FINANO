@@ -318,8 +318,25 @@ body::before {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: grayscale(1) contrast(1.08) brightness(0.82);
   z-index: 1;
+  /* Avoid CSS filter on <video> — causes severe playback jank on many GPUs */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Cinematic tint via overlay (cheap) instead of per-frame video filters */
+.intro-video-slide::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    145deg,
+    rgba(0, 0, 0, 0.42) 0%,
+    rgba(18, 18, 22, 0.22) 55%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
 }
 
 .intro-video-overlay {
@@ -329,10 +346,10 @@ body::before {
   margin-left: clamp(44px, 7vw, 112px);
   padding: 28px 30px;
   border-radius: 30px;
-  background: linear-gradient(145deg, rgba(0, 0, 0, 0.58), rgba(24, 24, 27, 0.28));
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.72), rgba(24, 24, 27, 0.55));
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px);
+  /* backdrop-filter removed on intro — blurring while video plays is costly */
 }
 
 .intro-title {

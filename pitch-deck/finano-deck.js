@@ -190,8 +190,12 @@ function handleSlideMedia(activeSlide) {
   slides.forEach((slide) => {
     slide.querySelectorAll("video").forEach((video) => {
       if (slide === activeSlide) {
-        video.currentTime = video.dataset.replay === "false" ? video.currentTime : 0;
-        video.play().catch(() => {});
+        const replay = video.dataset.replay !== "false";
+        if (replay && (video.ended || video.currentTime < 0.05)) {
+          video.currentTime = 0;
+        }
+        const playPromise = video.play();
+        if (playPromise?.catch) playPromise.catch(() => {});
       } else {
         video.pause();
       }

@@ -25,8 +25,21 @@ finano-pitch-deck/
 
 | File | ~Size |
 |------|-------|
-| `assets/finano_concept.mp4` | 16 MB |
+| `assets/finano_concept.mp4` | 16 MB (re-encode recommended for smooth play) |
 | `assets/finano.mp3` | 25 MB |
+
+### Intro video stutters?
+
+1. **Page fix (already applied):** no CSS `filter` / `backdrop-filter` on the intro `<video>` (they force GPU work every frame).
+2. **Re-encode for web** (best): from repo root on a machine with ffmpeg:
+
+```bash
+bash scripts/optimize-intro-video.sh
+git add pitch-deck/assets/finano_concept.mp4
+git push origin main
+```
+
+Target ~2–5 MB, 720p, H.264 **faststart** (starts playing before full download). Original kept as `finano_concept.source.mp4`.
 
 Clone with LFS:
 

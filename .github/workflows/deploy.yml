@@ -32,12 +32,19 @@ jobs:
           filters: |
             pitch:
               - 'pitch-deck/**'
+              - 'scripts/sync-pitch-deck.sh'
+              - 'scripts/ensure-pitch-8082.sh'
+              - 'scripts/setup-pitch-deck-nginx.sh'
+              - 'scripts/install-pitch-deck-boot.sh'
+              - 'scripts/finano-pitch-sync.service'
+              - 'scripts/diagnose-vps.sh'
             app:
               - 'frontend/**'
               - 'backend/**'
               - 'docker-compose*.yml'
-              - 'scripts/**'
-              - '.github/workflows/deploy.yml'
+              - 'scripts/vps-deploy.sh'
+              - 'scripts/finano-app.service'
+              - 'scripts/install-vps-boot-all.sh'
               - '.gitattributes'
 
   # Fast path (~1–2 min): static HTML only, no Docker / no pip

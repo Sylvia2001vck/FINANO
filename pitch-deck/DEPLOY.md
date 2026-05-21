@@ -49,6 +49,19 @@ bash scripts/diagnose-vps.sh
 bash scripts/install-vps-boot-all.sh   # if systemd units missing
 ```
 
+## `mkdir: cannot create directory '/var/www/finano-pitch-ppt': Permission denied`
+
+GitHub Actions SSH 用户默认不能写 `/var/www`。在 VPS 用**同一部署账号**执行一次：
+
+```bash
+cd /opt/finano && git pull origin main
+bash scripts/ensure-pitch-8082.sh
+```
+
+## 为什么只改 PPT 却跑了 Docker（deploy-app）？
+
+若同一次 commit 还包含 `scripts/**`（旧规则）或 `frontend/`、`deploy.yml` 等，CI 会走慢路径。日常路演请**只提交 `pitch-deck/**`**，或用 `finano-pitch-deck` 的 `push-pitch.ps1`。
+
 ## GitHub Actions `drone-scp` / `wait: remote command exited`
 
 Often happens if the VPS was **rebooting** during **deploy-app** (uploading `frontend-dist.tgz`). Wait ~2 minutes, re-run the failed workflow; avoid rebooting the instance during deploy.
@@ -60,12 +73,19 @@ Use correct URLs:
 
 Opening `http://43.129.199.236` without port hits **:80**, which may be empty.
 
-Install Git LFS on the VPS if video/audio are missing after deploy:
+## Intro video / BGM not playing (black screen on slide 1)
+
+`finano_concept.mp4` (~16 MB) and `finano.mp3` are stored with **Git LFS**. If the VPS never ran `git lfs pull`, the synced file is only a **pointer** (~130 bytes) — the page loads but the video cannot play.
 
 ```bash
 sudo apt-get update && sudo apt-get install -y git-lfs
 cd /opt/finano && git lfs install && git lfs pull
+bash scripts/sync-pitch-deck.sh
+ls -lh /var/www/finano-pitch-ppt/assets/finano_concept.mp4   # should be ~16M, not ~130 bytes
+curl -I http://127.0.0.1:8082/assets/finano_concept.mp4      # expect HTTP 200
 ```
+
+Then hard-refresh the browser (Ctrl+F5). `sync-pitch-deck.sh` now runs `git lfs pull` automatically when `git-lfs` is installed.
 
 ## Local edit
 

@@ -25,6 +25,18 @@ echo ""
 echo "========== pitch web root =========="
 ls -la /var/www/finano-pitch-ppt/index.html 2>/dev/null || echo "missing /var/www/finano-pitch-ppt/index.html"
 ls -la /opt/finano/pitch-deck/index.html 2>/dev/null || echo "missing /opt/finano/pitch-deck/index.html"
+for f in /var/www/finano-pitch-ppt/assets/finano_concept.mp4 /opt/finano/pitch-deck/assets/finano_concept.mp4; do
+  if [[ -f "$f" ]]; then
+    ls -lh "$f"
+    sz="$(wc -c < "$f" | tr -d ' ')"
+    if [[ "$sz" -lt 1000000 ]]; then
+      echo "WARN: $f looks like Git LFS pointer (${sz}B). Install git-lfs and run: cd /opt/finano && git lfs pull && bash scripts/sync-pitch-deck.sh"
+    fi
+  else
+    echo "missing $f"
+  fi
+done
+command -v git-lfs >/dev/null 2>&1 && git lfs version || echo "git-lfs not installed"
 
 echo ""
 echo "========== local curl =========="

@@ -5,6 +5,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
+PITCH_WWW="/var/www/finano-pitch-ppt"
+if [[ ! -d "${PITCH_WWW}" ]] || [[ ! -w "${PITCH_WWW}" ]]; then
+  sudo mkdir -p "${PITCH_WWW}"
+  sudo chown -R "$(whoami):$(whoami)" "${PITCH_WWW}"
+fi
+
 if ! command -v nginx >/dev/null 2>&1; then
   echo "ensure-pitch-8082: installing nginx..."
   sudo apt-get update -qq

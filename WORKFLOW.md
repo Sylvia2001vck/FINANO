@@ -16,8 +16,11 @@ git commit -m "Fix MAFB pipeline"
 git push origin main
 ```
 
-- 只改 `pitch-deck/**` → 自动走快速部署（约 1–2 分钟）
-- 改了 `frontend/`、`backend/` 等 → 全量 Docker 部署（慢，日志里的 pip 安装属于这类）
+- **只改** `pitch-deck/**` → **deploy-pitch-deck**（约 1–2 分钟）
+- 改了 `frontend/`、`backend/`、`scripts/vps-deploy.sh` 等 → **deploy-app**（慢，含 Docker/pip）
+- 同一次 push 若还改了 `scripts/ensure-pitch-8082.sh`、`.github/workflows/deploy.yml` 等，也会触发 **deploy-app**（已收紧规则；日常改 PPT 尽量只动 `pitch-deck/`）
+
+CI 用户写 `/var/www` 需权限。VPS 上执行一次：`bash scripts/ensure-pitch-8082.sh`（会 `chown` 给当前 SSH 用户）。
 
 ## 路演 PPT 请去另一个文件夹
 

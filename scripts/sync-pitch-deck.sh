@@ -11,6 +11,26 @@ if [[ ! -d "${SRC}" ]]; then
   exit 0
 fi
 
-mkdir -p "${DST}"
-rsync -a --delete "${SRC}/" "${DST}/"
+# Intro video / BGM are Git LFS; without pull, only pointer files (~130B) get rsync'd.
+if command -v git-lfs >/dev/null 2>&1 && git -C "${ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git -C "${ROOT}" lfs pull
+fi
+
+# CI/deploy user often cannot write /var/www without sudo (one-time: install-pitch-deck-boot.sh)
+if [[ ! -d "${DST}" ]]; then
+  sudo mkdir -p "${DST}"
+fi
+if [[ -w "${DST}" ]]; then
+  rsync -a --delete "${SRC}/" "${DST}/"
+else
+  sudo rsync -a --delete "${SRC}/" "${DST}/"
+fi
 echo "sync-pitch-deck: ${SRC} -> ${DST}"
+
+MP4="${SRC}/assets/finano_concept.mp4"
+if [[ -f "${MP4}" ]]; then
+  size="$(wc -c < "${MP4}" | tr -d ' ')"
+  if [[ "${size}" -lt 1000000 ]]; then
+    echo "sync-pitch-deck: WARN ${MP4} is only ${size} bytes — run: sudo apt install -y git-lfs && git lfs install && git lfs pull" >&2
+  fi
+fi

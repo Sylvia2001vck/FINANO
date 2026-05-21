@@ -21,26 +21,44 @@ On push to `main`:
 
 The long log lines (`Downloading … whl`, `Installing collected packages`) come from **backend Docker image rebuild**, not from the HTML pitch deck.
 
-## One-time VPS setup (Nginx + boot autostart + firewall)
+## One-time VPS setup (reboot autostart + firewall)
 
 ```bash
 cd /opt/finano
 git pull origin main
-bash scripts/install-pitch-deck-boot.sh
-# Tencent Cloud security group: allow TCP 8082
+chmod +x scripts/*.sh
+bash scripts/install-vps-boot-all.sh
 ```
 
-This installs:
+Installs:
 
-- `finano-pitch-sync.service` — on **every reboot**, rsync `/opt/finano/pitch-deck` → `/var/www/finano-pitch-ppt` before Nginx starts
-- Nginx site on **8082**, `systemctl enable nginx` so it starts after instance restart
+- **`finano-app.service`** — Docker Compose product on **:8081** after reboot
+- **`finano-pitch-sync.service`** + Nginx — pitch deck on **:8082**
+- `systemctl enable docker nginx`
 
-Verify after reboot:
+Tencent Cloud security group: allow **TCP 8081** and **8082** (not only 80).
+
+## After reboot shows「未发送任何数据」?
+
+Usually nothing is listening on **8082** (Nginx not installed/enabled, or one-time boot setup never ran).
 
 ```bash
-sudo systemctl status finano-pitch-sync.service nginx
-curl -I http://127.0.0.1:8082/
+cd /opt/finano && git pull origin main
+bash scripts/ensure-pitch-8082.sh      # quick fix: sync + nginx :8082
+bash scripts/diagnose-vps.sh
+bash scripts/install-vps-boot-all.sh   # if systemd units missing
 ```
+
+## GitHub Actions `drone-scp` / `wait: remote command exited`
+
+Often happens if the VPS was **rebooting** during **deploy-app** (uploading `frontend-dist.tgz`). Wait ~2 minutes, re-run the failed workflow; avoid rebooting the instance during deploy.
+
+Use correct URLs:
+
+- Product: http://43.129.199.236:8081/
+- Pitch: http://43.129.199.236:8082/
+
+Opening `http://43.129.199.236` without port hits **:80**, which may be empty.
 
 Install Git LFS on the VPS if video/audio are missing after deploy:
 

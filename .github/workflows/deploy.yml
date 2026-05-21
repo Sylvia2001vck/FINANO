@@ -65,7 +65,7 @@ jobs:
             if command -v git-lfs >/dev/null 2>&1; then
               git lfs pull
             fi
-            bash scripts/sync-pitch-deck.sh
+            bash scripts/ensure-pitch-8082.sh
             echo "Pitch deck only deploy done → :8082"
 
   # Slow path (10–30+ min): npm build + Docker backend pip install + compose up
@@ -93,7 +93,20 @@ jobs:
       - name: Pack frontend dist
         run: tar czf frontend-dist.tgz -C frontend dist
 
-      - name: Upload dist tarball to VPS
+      - name: Wait for VPS SSH (avoid deploy during reboot)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 90s
+          script: echo "SSH ready"
+
+      - name: Upload dist tarball to VPS (attempt 1)
+        id: scp1
+        continue-on-error: true
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -101,8 +114,36 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 120s
+          command_timeout: 15m
           source: "frontend-dist.tgz"
           target: "/opt/finano/"
+
+      - name: Upload dist tarball to VPS (attempt 2)
+        if: steps.scp1.outcome == 'failure'
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 120s
+          command_timeout: 15m
+          source: "frontend-dist.tgz"
+          target: "/opt/finano/"
+
+      - name: Verify tarball on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            test -s /opt/finano/frontend-dist.tgz || (echo "frontend-dist.tgz missing after scp" && exit 1)
+            ls -lh /opt/finano/frontend-dist.tgz
 
       - name: Deploy product via SSH (Docker build — slow step)
         uses: appleboy/ssh-action@v1.0.3
@@ -122,6 +163,6 @@ jobs:
               git lfs pull
             fi
             bash scripts/vps-deploy.sh
-            if [ -f scripts/sync-pitch-deck.sh ]; then
-              bash scripts/sync-pitch-deck.sh
+            if [ -f scripts/ensure-pitch-8082.sh ]; then
+              bash scripts/ensure-pitch-8082.sh
             fi

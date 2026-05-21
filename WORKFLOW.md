@@ -27,12 +27,12 @@ git push origin main
 
 改完后运行 `.\push-pitch.ps1`。
 
-## VPS 重启后 :8082 自动恢复
+## VPS 重启后自动恢复（8081 产品 + 8082 路演）
 
-在服务器执行一次（见 `pitch-deck/DEPLOY.md`）：
+在服务器**执行一次**：
 
 ```bash
-cd /opt/finano && bash scripts/install-pitch-deck-boot.sh
+cd /opt/finano && git pull origin main && bash scripts/install-vps-boot-all.sh
 ```
 
-会安装 `finano-pitch-sync.service` 并 `systemctl enable nginx`。
+诊断：`bash scripts/diagnose-vps.sh`

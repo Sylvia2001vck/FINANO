@@ -1,0 +1,16 @@
+[Unit]
+Description=FINANO product stack (Docker Compose :8081)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/finano
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prebuilt-frontend.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prebuilt-frontend.yml stop
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

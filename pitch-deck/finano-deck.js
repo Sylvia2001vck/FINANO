@@ -15,6 +15,7 @@ let bgmUnlocked = false;
 const INTRO_BGM_DELAY_MS = 15000;
 const deckBgm = document.querySelector("#deck-bgm");
 const introSlideIndex = slides.findIndex((slide) => slide.classList.contains("intro-video-slide"));
+const tocSlideIndex = slides.findIndex((slide) => slide.classList.contains("toc-slide"));
 
 if (deckBgm) {
   deckBgm.volume = 0.28;
@@ -66,13 +67,28 @@ function initDeckBgm() {
   }, INTRO_BGM_DELAY_MS);
 }
 
-function go(delta) {
+function goToSlide(index) {
   if (locked) return;
+  const next = Math.max(0, Math.min(slides.length - 1, index));
+  if (next === current) return;
   locked = true;
-  updateDeck(current + delta);
+  updateDeck(next);
   window.setTimeout(() => {
     locked = false;
   }, 860);
+}
+
+function goToToc() {
+  if (tocSlideIndex >= 0) goToSlide(tocSlideIndex);
+}
+
+function goToSection(sectionId) {
+  const index = slides.findIndex((slide) => slide.id === sectionId);
+  if (index >= 0) goToSlide(index);
+}
+
+function go(delta) {
+  goToSlide(current + delta);
 }
 
 function runSlideAnimations(slide) {
@@ -163,6 +179,85 @@ function bindButtons() {
   document.querySelectorAll("[data-next]").forEach((button) => {
     button.addEventListener("click", () => go(1));
   });
+}
+
+function bindTocNavigation() {
+  document.querySelector("#toc-button")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    goToToc();
+  });
+
+  document.querySelectorAll("[data-goto]").forEach((target) => {
+    const jump = () => goToSection(target.dataset.goto);
+
+    target.addEventListener("click", (event) => {
+      event.stopPropagation();
+      jump();
+    });
+
+    target.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      jump();
+    });
+  });
+}
+
+function bindTouchNavigation() {
+  let startY = 0;
+  let startX = 0;
+  let tracking = false;
+  let startTarget = null;
+
+  function findScrollableAncestor(node) {
+    let el = node instanceof Element ? node : null;
+    while (el && el !== document.body) {
+      const style = window.getComputedStyle(el);
+      const scrollable = /auto|scroll/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1;
+      if (scrollable) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  window.addEventListener(
+    "touchstart",
+    (event) => {
+      if (event.touches.length !== 1) return;
+      startY = event.touches[0].clientY;
+      startX = event.touches[0].clientX;
+      startTarget = event.target;
+      tracking = true;
+    },
+    { passive: true }
+  );
+
+  window.addEventListener(
+    "touchend",
+    (event) => {
+      if (!tracking) return;
+      tracking = false;
+
+      const touch = event.changedTouches[0];
+      const deltaY = touch.clientY - startY;
+      const deltaX = touch.clientX - startX;
+      const threshold = 52;
+
+      if (Math.abs(deltaY) < threshold || Math.abs(deltaX) > Math.abs(deltaY)) return;
+
+      const scrollContainer = findScrollableAncestor(startTarget);
+      if (scrollContainer) {
+        const atTop = scrollContainer.scrollTop <= 0;
+        const atBottom =
+          scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 1;
+        if (deltaY < 0 && !atBottom) return;
+        if (deltaY > 0 && !atTop) return;
+      }
+
+      go(deltaY < 0 ? 1 : -1);
+    },
+    { passive: true }
+  );
 }
 
 function bindEditableImages() {
@@ -297,6 +392,8 @@ setStaggerOrders();
 bindMouseGlow();
 bindPointerAtmosphere();
 bindButtons();
+bindTocNavigation();
+bindTouchNavigation();
 bindEditableImages();
 bindIntroVideo();
 initDeckBgm();

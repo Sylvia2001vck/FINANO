@@ -69,7 +69,14 @@
       </svg>
     </div>
     <div class="progress-shell"><div id="progress-bar"></div></div>
-    <div class="slide-count"><span id="current-slide">01</span>/<span id="total-slides">27</span></div>
+    <div class="deck-ui-actions">
+      <button type="button" class="toc-button" id="toc-button" aria-label="Back to table of contents" title="Table of contents">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="slide-count"><span id="current-slide">01</span>/<span id="total-slides">27</span></div>
+    </div>
   </nav>
 
   <main id="deck" class="deck">
@@ -109,36 +116,36 @@
       </div>
     </section>
 
-    <section class="slide toc-slide">
+    <section class="slide toc-slide" id="slide-toc">
       <p class="eyebrow stagger">Table of Contents</p>
       <h2 class="slide-title stagger">Table of Contents</h2>
       <div class="toc-grid">
-        <article class="toc-card stagger">
+        <article class="toc-card stagger" data-goto="section-01" role="link" tabindex="0">
           <span>01</span>
           <h3>Elevator Pitch & Pain Points</h3>
           <p>One-line pitch, user pain points, value proposition, and product impact.</p>
         </article>
-        <article class="toc-card stagger">
+        <article class="toc-card stagger" data-goto="section-02" role="link" tabindex="0">
           <span>02</span>
           <h3>Product & Tech Barrier</h3>
           <p>FBTI, MAFB, RAG Replay, AI Fund Selector, and product demos.</p>
         </article>
-        <article class="toc-card stagger">
+        <article class="toc-card stagger" data-goto="section-03" role="link" tabindex="0">
           <span>03</span>
           <h3>Industrial & Market Analysis</h3>
           <p>AI wealth management trends, Gen-Z market gaps, and competitive advantages.</p>
         </article>
-        <article class="toc-card stagger">
+        <article class="toc-card stagger" data-goto="section-04" role="link" tabindex="0">
           <span>04</span>
           <h3>Marketing & Operation Plan</h3>
           <p>4Ps, personality-card virality, channel strategy, and operating loop.</p>
         </article>
-        <article class="toc-card stagger">
+        <article class="toc-card stagger" data-goto="section-05" role="link" tabindex="0">
           <span>05</span>
           <h3>Management Team & Financial Plan</h3>
           <p>Pricing tiers, team equity, HKD 500K funding ask, revenue forecast, and break-even.</p>
         </article>
-        <article class="toc-card stagger">
+        <article class="toc-card stagger" data-goto="section-06" role="link" tabindex="0">
           <span>06</span>
           <h3>Lean Canvas & Exit Strategy</h3>
           <p>Lean Canvas, early adopters, business path, exit strategy, and Q&A.</p>
@@ -159,7 +166,7 @@
       </div>
     </section>
 
-    <section class="slide section-break">
+    <section class="slide section-break" id="section-01">
       <p class="eyebrow stagger">Part 1</p>
       <h2 class="gradient-title stagger">Elevator Pitch & Pain Points</h2>
       <p class="lead stagger">Finano = MBTI + Metaphysics + Behavioral Finance x LLM Multi-Agent System.</p>
@@ -251,7 +258,7 @@
       </div>
     </section>
 
-    <section class="slide section-break">
+    <section class="slide section-break" id="section-02">
       <p class="eyebrow stagger">Part 2</p>
       <h2 class="gradient-title stagger">Product & Tech Barrier</h2>
       <p class="lead stagger">LangGraph 8-node state machine, 5-way parallel sub-agents, compliance interception, and strict JSON constraints.</p>
@@ -486,7 +493,7 @@
       <p class="caption stagger">GitHub: github.com/Sylvia2001vck/FINANO · Open source for educational demo only, not investment advice</p>
     </section>
 
-    <section class="slide section-break">
+    <section class="slide section-break" id="section-03">
       <p class="eyebrow stagger">Part 3</p>
       <h2 class="gradient-title stagger">Industrial & Market Analysis</h2>
       <p class="lead stagger">AI + wealth management is growing rapidly, but Gen-Z needs a more personalized and entertaining entry point.</p>
@@ -522,7 +529,7 @@
       </div>
     </section>
 
-    <section class="slide section-break">
+    <section class="slide section-break" id="section-04">
       <p class="eyebrow stagger">Part 4</p>
       <h2 class="gradient-title stagger">Marketing & Operation Plan</h2>
       <p class="lead stagger">Use FBTI cards as an acquisition flywheel and replay loops for long-term retention.</p>
@@ -548,7 +555,7 @@
       <p class="lead narrow stagger">Assessment -> Analysis -> Execution -> Replay -> Optimization. Every interaction strengthens the user profile and improves replay quality.</p>
     </section>
 
-    <section class="slide section-break">
+    <section class="slide section-break" id="section-05">
       <p class="eyebrow stagger">Part 5</p>
       <h2 class="gradient-title stagger">Management Team & Financial Plan</h2>
       <p class="lead stagger">AI engineering, behavioral finance, full-stack development, and an ultra-low-cost structure create early advantages.</p>
@@ -593,14 +600,22 @@
 
     <section class="slide team-slide">
       <p class="eyebrow stagger">Management Team</p>
-      <h2 class="slide-title stagger">Sylvia Agile Team · Click Avatars to Add Photos</h2>
+      <h2 class="slide-title stagger">Executive Leadership · Six-Person C-Suite</h2>
       <div class="team-grid">
         <article class="glass-card team-card stagger is-filled">
           <img class="editable-image team-avatar" src="./assets/team-sylvia.png" alt="Sylvia founder photo">
           <div class="team-copy">
             <h3 contenteditable="true" spellcheck="false">Sylvia</h3>
-            <p class="team-role" contenteditable="true" spellcheck="false">Tech & Product Lead · Sole Founder · 100% Control</p>
-            <p class="team-bio" contenteditable="true" spellcheck="false">HKUST background. LLM engineering, LangGraph multi-agent architecture, full-stack delivery, and end-to-end product integration.</p>
+            <p class="team-role" contenteditable="true" spellcheck="false">Founder, CEO &amp; CTO</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Visionary founder and core system architect. Orchestrates FINANO's long-term business trajectory while pioneering the proprietary LangGraph multi-agent framework. Fuses high-performance distributed engineering with end-to-end full-stack deployment and deep product integration.</p>
+          </div>
+        </article>
+        <article class="glass-card team-card stagger is-placeholder">
+          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Wang Xinyi photo">
+          <div class="team-copy">
+            <h3 contenteditable="true" spellcheck="false">Wang Xinyi</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Chief Data Officer · CDO</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Data engineering powerhouse. Architect of FINANO's automated financial data synchronization engines and real-time analytical pipelines. Controls data integrity, risk modeling storage, and database optimizations to fuel the core multi-agent ecosystem.</p>
           </div>
         </article>
         <article class="glass-card team-card stagger is-filled">
@@ -608,35 +623,35 @@
           <div class="team-copy">
             <h3 contenteditable="true" spellcheck="false">Zack</h3>
             <p class="team-role" contenteditable="true" spellcheck="false">Chief Strategy Officer · CSO</p>
-            <p class="team-bio" contenteditable="true" spellcheck="false">Strategic architect for Finano's long-term vision and capital roadmap. Led the financial plan and exit strategy, mapping acquisition targets (banks, fintech giants) and IPO trajectory. Bridges technical capabilities with market expectations and oversees fund allocation across R&D and marketing.</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Chief strategic architect steering Finano's institutional capital roadmap and dual-track exit strategies (M&amp;A/IPO). Spearheads financial structuring, market positioning, and cross-border resource allocation to bridge cutting-edge AI with Tier-1 financial institutions.</p>
           </div>
         </article>
         <article class="glass-card team-card stagger is-filled">
           <img class="editable-image team-avatar" src="./assets/team-jianghaoyu.png" alt="Jiang Haoyu photo">
           <div class="team-copy">
             <h3 contenteditable="true" spellcheck="false">Jiang Haoyu</h3>
-            <p class="team-role" contenteditable="true" spellcheck="false">Industrial &amp; Market Analyst</p>
-            <p class="team-bio" contenteditable="true" spellcheck="false">Proficient in industrial and market analysis, identifying trends, competitive forces, and growth drivers. Delivers data-driven insights to assess opportunities, risks, and strategic positioning across dynamic sectors.</p>
+            <p class="team-role" contenteditable="true" spellcheck="false">Chief Growth Officer · CGO</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Growth &amp; market monetization strategist. Drives Finano's market penetration through deep-tier industrial intelligence and user acquisition scaling. Translates complex fintech dynamics into actionable growth vectors to capture high-yield market shares and expand brand equity.</p>
           </div>
         </article>
         <article class="glass-card team-card stagger is-placeholder">
-          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Team member 5 photo">
+          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Wu Xinze photo">
           <div class="team-copy">
-            <h3 contenteditable="true" spellcheck="false">Member 4</h3>
-            <p class="team-role" contenteditable="true" spellcheck="false">Role · Division</p>
-            <p class="team-bio" contenteditable="true" spellcheck="false">Click to add photo, name, and introduction.</p>
+            <h3 contenteditable="true" spellcheck="false">Wu Xinze</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Chief Marketing Officer · CMO</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Mastermind of market mechanics and business process architecture. Structures FINANO's strategic 4P/4C marketing matrix and end-to-end service delivery workflows. Engineers adaptive, contingency-driven plans to safeguard market positioning against macro shifts.</p>
           </div>
         </article>
         <article class="glass-card team-card stagger is-placeholder">
-          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Team member 5 photo">
+          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Zhao Junyi photo">
           <div class="team-copy">
-            <h3 contenteditable="true" spellcheck="false">Member 5</h3>
-            <p class="team-role" contenteditable="true" spellcheck="false">Role · Division</p>
-            <p class="team-bio" contenteditable="true" spellcheck="false">Click to add photo, name, and introduction.</p>
+            <h3 contenteditable="true" spellcheck="false">Zhao Junyi</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Chief Operating Officer · COO</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Operational strategist and master BP architect. Orchestrates FINANO's comprehensive business blue-printing, commercial modeling, and cross-functional operational scaling. Bridges corporate vision with disciplined execution vectors to maximize organizational efficiency.</p>
           </div>
         </article>
       </div>
-      <p class="lead narrow stagger">Core team: Sylvia (founder), Zack (CSO), Jiang Haoyu (market analysis), plus open slots. Click any avatar to replace a photo; click text to edit bios.</p>
+      <p class="lead narrow stagger">Six-member C-suite: Sylvia (Founder/CEO/CTO), Wang Xinyi (CDO), Zack (CSO), Jiang Haoyu (CGO), Wu Xinze (CMO), Zhao Junyi (COO). Click any avatar to add photos when ready.</p>
     </section>
 
     <section class="slide equity-slide">
@@ -650,7 +665,7 @@
               <span class="equity-dot sylvia"></span>
               <div class="equity-legend-copy">
                 <div class="equity-legend-top"><strong>Sylvia</strong><em>100%</em></div>
-                <span>Sole Founder · Full Control · Tech & Product Lead</span>
+                <span>Founder · CEO &amp; CTO · Full Control</span>
               </div>
             </li>
             <li>
@@ -666,14 +681,14 @@
           <h3>Complementary Skills</h3>
           <div class="skill-matrix">
             <div><span>LLM / Agents</span><strong>Sylvia</strong></div>
-            <div><span>Quant / Risk</span><strong>Incentive Hire</strong></div>
+            <div><span>Data / Pipeline</span><strong>Wang Xinyi</strong></div>
             <div><span>Full-Stack</span><strong>Sylvia</strong></div>
-            <div><span>Compliance</span><strong>Incentive Hire</strong></div>
             <div><span>Strategy / Capital</span><strong>Zack</strong></div>
-            <div><span>Market / Sector</span><strong>Jiang Haoyu</strong></div>
-            <div><span>GTM / Virality</span><strong>Zack + Team</strong></div>
+            <div><span>Growth / Monetization</span><strong>Jiang Haoyu</strong></div>
+            <div><span>Marketing / 4P</span><strong>Wu Xinze</strong></div>
+            <div><span>Operations / BP</span><strong>Zhao Junyi</strong></div>
           </div>
-          <p class="lead narrow">Sylvia holds 100% control as sole founder. Zack (CSO) leads strategy and capital; Jiang Haoyu covers industrial and market analysis; the 40% incentive pool remains reserved for future core hires.</p>
+          <p class="lead narrow">Sylvia holds 100% control as founder. The six-person C-suite covers technology, data, strategy, growth, marketing, and operations; the 40% incentive pool remains reserved for future core hires.</p>
         </article>
       </div>
     </section>
@@ -761,7 +776,7 @@
       </div>
     </section>
 
-    <section class="slide section-break">
+    <section class="slide section-break" id="section-06">
       <p class="eyebrow stagger">Part 6</p>
       <h2 class="gradient-title stagger">Lean Canvas & Exit Strategy</h2>
       <p class="lead stagger">FINANO is 16Personalities meets Wealthfront, Spotify Discover Weekly for mutual funds.</p>

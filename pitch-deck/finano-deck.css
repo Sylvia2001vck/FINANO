@@ -266,6 +266,43 @@ body::before {
   transition: width 800ms var(--ease);
 }
 
+.deck-ui-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: auto;
+}
+
+.toc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(9, 9, 11, 0.56);
+  color: #f4f4f5;
+  box-shadow: 0 0 28px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition: transform 180ms var(--ease), border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+
+.toc-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.toc-button:hover,
+.toc-button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 34px rgba(255, 255, 255, 0.16);
+  outline: none;
+}
+
 .slide-count {
   color: var(--muted);
   font-weight: 700;
@@ -918,6 +955,18 @@ p {
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 24px 70px rgba(0, 0, 0, 0.34);
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 220ms var(--ease), border-color 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+
+.toc-card:hover,
+.toc-card:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 28px 80px rgba(0, 0, 0, 0.42);
+  outline: none;
 }
 
 .toc-card::after {
@@ -2188,5 +2237,21 @@ p {
   .final-cta-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .deck-ui {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    gap: 12px;
+  }
+
+  .toc-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .slide-count {
+    font-size: 0.82rem;
   }
 }

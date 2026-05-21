@@ -4,16 +4,84 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      full_deploy:
+        description: "Force full product deploy (Docker + frontend)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: finano-deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      pitch: ${{ steps.filter.outputs.pitch }}
+      app: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            pitch:
+              - 'pitch-deck/**'
+            app:
+              - 'frontend/**'
+              - 'backend/**'
+              - 'docker-compose*.yml'
+              - 'scripts/vps-deploy.sh'
+              - 'scripts/setup-pitch-deck-nginx.sh'
+              - '.github/workflows/deploy.yml'
+              - '.gitattributes'
+
+  # Fast path (~1–2 min): static HTML only, no Docker / no pip
+  deploy-pitch-deck:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.pitch == 'true' && needs.detect-changes.outputs.app != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
 
-      # 前端在 GitHub 机器上构建，避免 VPS 跑 vite 时内存打满、SSH 掉线、Actions 超时
+      - name: Sync pitch-deck to VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            cd /opt/finano
+            git fetch origin main
+            git reset --hard origin/main
+            if command -v git-lfs >/dev/null 2>&1; then
+              git lfs pull
+            fi
+            mkdir -p /var/www/finano-pitch-ppt
+            rsync -a --delete pitch-deck/ /var/www/finano-pitch-ppt/
+            echo "Pitch deck only deploy done → :8082"
+
+  # Slow path (10–30+ min): npm build + Docker backend pip install + compose up
+  deploy-app:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.app == 'true' ||
+      github.event.inputs.full_deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -38,7 +106,7 @@ jobs:
           source: "frontend-dist.tgz"
           target: "/opt/finano/"
 
-      - name: Deploy via SSH
+      - name: Deploy product via SSH (Docker build — slow step)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -59,5 +127,4 @@ jobs:
             if [ -d pitch-deck ]; then
               mkdir -p /var/www/finano-pitch-ppt
               rsync -a --delete pitch-deck/ /var/www/finano-pitch-ppt/
-              echo "Pitch deck synced → http://$(hostname -I | awk '{print $1}'):8082/"
             fi

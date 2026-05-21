@@ -12,10 +12,14 @@ Uses the **same GitHub Actions secrets** as the product deploy (`.github/workflo
 
 - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`, `SSH_PASSPHRASE`
 
-On every push to `main`:
+On push to `main`:
 
-1. Product deploy runs (`scripts/vps-deploy.sh`)
-2. `pitch-deck/` is rsynced to `/var/www/finano-pitch-ppt/` on the VPS
+| What changed | CI job | Typical time |
+|--------------|--------|----------------|
+| Only `pitch-deck/**` | **deploy-pitch-deck** (git pull + rsync) | ~1–2 min |
+| `frontend/`, `backend/`, Docker, etc. | **deploy-app** (npm + `docker build` + pip) | 10–30+ min |
+
+The long log lines (`Downloading … whl`, `Installing collected packages`) come from **backend Docker image rebuild**, not from the HTML pitch deck.
 
 ## One-time VPS setup (Nginx + firewall)
 

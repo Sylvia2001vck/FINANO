@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       # 前端在 GitHub 机器上构建，避免 VPS 跑 vite 时内存打满、SSH 掉线、Actions 超时
       - uses: actions/setup-node@v4
@@ -50,4 +52,12 @@ jobs:
             cd /opt/finano
             git fetch origin main
             git reset --hard origin/main
+            if command -v git-lfs >/dev/null 2>&1; then
+              git lfs pull
+            fi
             bash scripts/vps-deploy.sh
+            if [ -d pitch-deck ]; then
+              mkdir -p /var/www/finano-pitch-ppt
+              rsync -a --delete pitch-deck/ /var/www/finano-pitch-ppt/
+              echo "Pitch deck synced → http://$(hostname -I | awk '{print $1}'):8082/"
+            fi

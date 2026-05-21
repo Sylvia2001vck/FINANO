@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINANO | Premium Dark Fintech Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./finano-deck.css">
+</head>
+<body>
+  <canvas id="particle-canvas" aria-hidden="true"></canvas>
+  <div class="parallax-stage" aria-hidden="true">
+    <div class="parallax-layer parallax-grid"></div>
+    <div class="parallax-layer parallax-waves"></div>
+  </div>
+  <div class="global-spotlight" aria-hidden="true"></div>
+  <div class="film-grain" aria-hidden="true"></div>
+  <div class="ambient ambient-gold"></div>
+  <div class="ambient ambient-blue"></div>
+
+  <nav class="deck-ui" aria-label="Deck controls">
+    <div class="brand-mark">
+      <svg class="finano-glyph-svg mini" viewBox="0 0 800 800" role="img" aria-label="FINANO logo">
+        <defs>
+          <linearGradient id="finanoChrome" x1="170" y1="145" x2="650" y2="650" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="0.42" stop-color="#c7c7cc"/>
+            <stop offset="0.72" stop-color="#5f6368"/>
+            <stop offset="1" stop-color="#f5f5f7"/>
+          </linearGradient>
+          <radialGradient id="finanoGlow" cx="400" cy="400" r="310" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>
+            <stop offset="0.58" stop-color="#ffffff" stop-opacity="0.08"/>
+            <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="finanoShadow" x="-25%" y="-25%" width="150%" height="150%">
+            <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.48"/>
+            <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#ffffff" flood-opacity="0.2"/>
+          </filter>
+        </defs>
+        <circle class="glyph-halo" cx="400" cy="400" r="335"/>
+        <g class="glyph-orbits">
+          <circle cx="400" cy="400" r="330"/>
+          <circle cx="400" cy="400" r="260"/>
+          <circle cx="400" cy="400" r="190"/>
+        </g>
+        <g class="glyph-network">
+          <g transform="rotate(0 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(45 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(90 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(135 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(180 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(225 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(270 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+          <g transform="rotate(315 400 400)"><line x1="400" y1="400" x2="400" y2="132"/><circle cx="400" cy="132" r="13"/></g>
+        </g>
+        <g class="glyph-core" filter="url(#finanoShadow)">
+          <path class="glyph-core-f" d="M270 245H493L455 307H348V366H442L407 426H348V555H270Z"/>
+          <path class="glyph-core-arrow" d="M356 487L500 343H436V281L606 400L436 519V457H399Z"/>
+          <g class="glyph-core-bars">
+            <rect x="494" y="493" width="32" height="92" rx="16"/>
+            <rect x="548" y="438" width="32" height="147" rx="16"/>
+            <rect x="602" y="382" width="32" height="203" rx="16"/>
+          </g>
+        </g>
+        <circle class="glyph-center-dot" cx="400" cy="400" r="8"/>
+      </svg>
+    </div>
+    <div class="progress-shell"><div id="progress-bar"></div></div>
+    <div class="slide-count"><span id="current-slide">01</span>/<span id="total-slides">27</span></div>
+  </nav>
+
+  <main id="deck" class="deck">
+    <section class="slide intro-video-slide is-active">
+      <video class="intro-video" src="./assets/finano_concept.mp4" autoplay muted playsinline controls preload="auto" data-auto-next></video>
+      <div class="intro-video-overlay">
+        <p class="eyebrow stagger">FINANO Concept Film</p>
+        <h1 class="metallic-title intro-title stagger" data-text="FINANO">FINANO</h1>
+        <p class="lead stagger">15-second brand concept opening.</p>
+        <button class="ghost-button intro-skip stagger" data-next>Skip Intro</button>
+      </div>
+    </section>
+
+    <section class="slide cover">
+      <div class="slide-grid two">
+        <div class="hero-copy">
+          <p class="eyebrow stagger">Behavioral Finance x Metaphysics x Multi-Agent AI</p>
+          <h1 class="metallic-title mega stagger" data-text="FINANO">FINANO</h1>
+          <h2 class="stagger">An AI Wealth Co-Pilot for the Gen-Z Investing Experience</h2>
+          <p class="lead stagger">An LLM-powered wealth co-pilot combining FBTI financial personality, Bazi-driven emotional engagement, LangGraph multi-agent analysis, and bidirectional trade replay.</p>
+          <div class="hero-actions stagger">
+            <button class="glow-button" data-next>Start Pitch</button>
+            <a class="glow-button cta-button" href="http://43.129.199.236:8081" target="_blank" rel="noopener noreferrer">Click to try our product</a>
+            <a class="ghost-button" href="https://github.com/Sylvia2001vck/FINANO" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <span class="hint">Use arrow keys / mouse wheel / click to navigate</span>
+          </div>
+        </div>
+        <div class="orbital-card stagger">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="core-orb">FBTI</div>
+          <div class="orbit-node n1">MAFB</div>
+          <div class="orbit-node n2">RAG</div>
+          <div class="orbit-node n3">Bazi</div>
+          <div class="orbit-node n4">SSE</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide toc-slide">
+      <p class="eyebrow stagger">Table of Contents</p>
+      <h2 class="slide-title stagger">Table of Contents</h2>
+      <div class="toc-grid">
+        <article class="toc-card stagger">
+          <span>01</span>
+          <h3>Elevator Pitch & Pain Points</h3>
+          <p>One-line pitch, user pain points, value proposition, and product impact.</p>
+        </article>
+        <article class="toc-card stagger">
+          <span>02</span>
+          <h3>Product & Tech Barrier</h3>
+          <p>FBTI, MAFB, RAG Replay, AI Fund Selector, and product demos.</p>
+        </article>
+        <article class="toc-card stagger">
+          <span>03</span>
+          <h3>Industrial & Market Analysis</h3>
+          <p>AI wealth management trends, Gen-Z market gaps, and competitive advantages.</p>
+        </article>
+        <article class="toc-card stagger">
+          <span>04</span>
+          <h3>Marketing & Operation Plan</h3>
+          <p>4Ps, personality-card virality, channel strategy, and operating loop.</p>
+        </article>
+        <article class="toc-card stagger">
+          <span>05</span>
+          <h3>Management Team & Financial Plan</h3>
+          <p>Pricing tiers, team equity, HKD 500K funding ask, revenue forecast, and break-even.</p>
+        </article>
+        <article class="toc-card stagger">
+          <span>06</span>
+          <h3>Lean Canvas & Exit Strategy</h3>
+          <p>Lean Canvas, early adopters, business path, exit strategy, and Q&A.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Roadmap</p>
+      <h2 class="slide-title stagger">Pitch Narrative Roadmap</h2>
+      <div class="agenda-grid">
+        <article class="glass-card stagger"><span>01</span><h3>Elevator Pitch</h3><p>Pain points, value proposition, and the blend of emotional value with professional analysis.</p></article>
+        <article class="glass-card stagger"><span>02</span><h3>Product & Barrier</h3><p>The technical moat across FBTI, MAFB, Replay, and AI Fund Selector.</p></article>
+        <article class="glass-card stagger"><span>03</span><h3>Market Analysis</h3><p>AI wealth management growth, Gen-Z mindshare, and competitive differentiation.</p></article>
+        <article class="glass-card stagger"><span>04</span><h3>Go-to-Market</h3><p>4Ps, pricing tiers, viral FBTI cards, and the operating loop.</p></article>
+        <article class="glass-card stagger"><span>05</span><h3>Team & Finance</h3><p>Equity split, HKD 500K ask, use of funds, revenue forecast, and break-even.</p></article>
+        <article class="glass-card stagger"><span>06</span><h3>Lean Canvas & Exit</h3><p>Business model, key metrics, acquisition path, and SaaS scaling route.</p></article>
+      </div>
+    </section>
+
+    <section class="slide section-break">
+      <p class="eyebrow stagger">Part 1</p>
+      <h2 class="gradient-title stagger">Elevator Pitch & Pain Points</h2>
+      <p class="lead stagger">Finano = MBTI + Metaphysics + Behavioral Finance x LLM Multi-Agent System.</p>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Pain Point / Value / Impact</p>
+      <h2 class="slide-title stagger">Turning Wealth Management from a Task into an Interaction</h2>
+      <div class="focus-cards">
+        <article class="glass-card focus-card stagger">
+          <span class="card-kicker">Pain Points</span>
+          <h3>Traditional Tools Feel Cold and Generic</h3>
+          <p>Investors struggle to translate historical lessons into present decisions, and rarely stay engaged with financial tools that lack a sense of companionship.</p>
+        </article>
+        <article class="glass-card focus-card stagger">
+          <span class="card-kicker">Value Proposition</span>
+          <h3>A Financial Personality System Powered by FBTI + Bazi</h3>
+          <p>Behavioral finance captures real user preferences, metaphysical semantics provide emotional value, and AI agents execute professional analysis.</p>
+        </article>
+        <article class="glass-card focus-card stagger">
+          <span class="card-kicker">Impact</span>
+          <h3>A High-Retention Wealth Entry Point</h3>
+          <p>Shareable, explainable, and replayable interactions improve conversion, retention, and repeat usage among Gen-Z investors.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">FBTI: Finance-Based Type Indicator</p>
+      <h2 class="slide-title stagger">8 Behavioral Finance Questions, 16 Investor Personality Types</h2>
+      <div class="slide-grid two fbti-showcase-grid">
+        <div class="glass-card stagger">
+          <h3>Assessment Flow</h3>
+          <ol class="timeline-list">
+            <li>8 behavioral finance scenario questions, each with A/B choices</li>
+            <li>4 dimensions x 2 questions generate a 4-letter type code</li>
+            <li>Maps to 16 financial personality types, such as RLDC Holder</li>
+            <li>Adds birthday-based Five Elements derivation for a more engaging persona</li>
+            <li>The FBTI code drives personalization across all AI modules</li>
+          </ol>
+        </div>
+        <div class="fbti-product-shot stagger">
+          <div class="shot-chrome">
+            <span></span><span></span><span></span>
+            <strong>FINANO / FBTI Assessment · Click image to preview replace</strong>
+          </div>
+          <img class="editable-image" src="./assets/fbti-assessment-ui.png" alt="FBTI financial personality assessment interface">
+        </div>
+      </div>
+      <div class="metric-strip stagger">
+        <div><strong>8Q</strong><span>Behavioral Scenarios</span></div>
+        <div><strong>4D</strong><span>Risk / Period / Mode / Habit</span></div>
+        <div><strong>16T</strong><span>Financial Personality Archive</span></div>
+      </div>
+      <div class="dimension-grid stagger">
+        <span>R / S: Conservative / Aggressive</span>
+        <span>L / T: Long-term / Short-term</span>
+        <span>D / F: Data-driven / Intuitive</span>
+        <span>C / A: Concentrated / Diversified</span>
+      </div>
+    </section>
+
+    <section class="slide image-slide">
+      <p class="eyebrow stagger">FBTI Personality Cards</p>
+      <h2 class="slide-title stagger">Visual Archive of 16 Financial Personality Types</h2>
+      <div class="image-feature-frame stagger">
+        <div class="shot-chrome">
+          <span></span><span></span><span></span>
+          <strong>16-Type Archive · Click image to preview replace</strong>
+        </div>
+        <img class="editable-image" src="./assets/fbti-personality-cards.png" alt="FBTI 16 financial personality cards">
+      </div>
+      <div class="chips stagger">
+        <span>RLDC Holder</span><span>RTDA Arbitrageur</span><span>SLDC Captain</span><span>STFC Wind Chaser</span><span>STFA Nomad</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Financial Personality Archive</p>
+      <h2 class="slide-title stagger">Four-Dimensional Personality Matrix</h2>
+      <div class="type-matrix">
+        <article class="glass-card stagger"><h3>Conservative Long RL</h3><p>RLDC Holder · RLDA Balancer · RLFC Devotee · RLFA Gentle</p></article>
+        <article class="glass-card stagger"><h3>Conservative Short RT</h3><p>RTDC Swinger · RTDA Arbitrageur · RTFC Sharp · RTFA Dabbler</p></article>
+        <article class="glass-card stagger"><h3>Aggressive Long SL</h3><p>SLDC Captain · SLDA Pioneer · SLFC Lone Wolf · SLFA Pathfinder</p></article>
+        <article class="glass-card stagger"><h3>Aggressive Short ST</h3><p>STDC Breaker · STDA Sprinter · STFC Wind Chaser · STFA Nomad</p></article>
+      </div>
+      <div class="chips stagger">
+        <span>MAFB Profiling Agent</span><span>AI Fund Selector Preference</span><span>Trade Replay Diagnosis</span>
+      </div>
+    </section>
+
+    <section class="slide section-break">
+      <p class="eyebrow stagger">Part 2</p>
+      <h2 class="gradient-title stagger">Product & Tech Barrier</h2>
+      <p class="lead stagger">LangGraph 8-node state machine, 5-way parallel sub-agents, compliance interception, and strict JSON constraints.</p>
+    </section>
+
+    <section class="slide pipeline-slide">
+      <p class="eyebrow stagger">MAFB: Multi-Agent Financial Console</p>
+      <h2 class="slide-title stagger">LangGraph 8-Node Main Pipeline</h2>
+      <div class="pipeline-wrap stagger">
+        <svg class="pipeline-svg" viewBox="0 0 1100 520" role="img" aria-label="LangGraph 8 node pipeline">
+          <defs>
+            <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f8fafc"/>
+              <stop offset="48%" stop-color="#94a3b8"/>
+              <stop offset="100%" stop-color="#27272a"/>
+            </linearGradient>
+            <filter id="softGlow"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <path class="flow-line" d="M115 140 C220 80, 305 80, 410 140 S600 200, 710 140 S900 75, 990 140"/>
+          <path class="flow-line branch" d="M410 140 C450 250, 555 295, 650 255"/>
+          <path class="flow-line branch" d="M710 140 C750 265, 855 315, 970 275"/>
+          <g class="node" transform="translate(90 110)"><circle r="42"/><text>profile</text></g>
+          <g class="node" transform="translate(250 88)"><circle r="42"/><text>preheat</text></g>
+          <g class="node" transform="translate(410 140)"><circle r="42"/><text>rag</text></g>
+          <g class="node major" transform="translate(555 210)"><circle r="52"/><text>parallel</text></g>
+          <g class="node" transform="translate(710 140)"><circle r="42"/><text>allocation</text></g>
+          <g class="node" transform="translate(855 94)"><circle r="42"/><text>compliance</text></g>
+          <g class="node" transform="translate(990 140)"><circle r="42"/><text>voting</text></g>
+          <g class="node blocked" transform="translate(990 275)"><circle r="42"/><text>blocked</text></g>
+          <g class="agent a1" transform="translate(270 365)"><rect x="-58" y="-18" width="116" height="36" rx="18"/><text>Fundamental</text></g>
+          <g class="agent a2" transform="translate(420 390)"><rect x="-58" y="-18" width="116" height="36" rx="18"/><text>Technical</text></g>
+          <g class="agent a3" transform="translate(570 365)"><rect x="-58" y="-18" width="116" height="36" rx="18"/><text>Risk</text></g>
+          <g class="agent a4" transform="translate(720 390)"><rect x="-58" y="-18" width="116" height="36" rx="18"/><text>Attribution</text></g>
+          <g class="agent a5" transform="translate(870 365)"><rect x="-58" y="-18" width="116" height="36" rx="18"/><text>Profiling</text></g>
+        </svg>
+      </div>
+      <div class="chips stagger"><span>Unified Preheat</span><span>Send Parallel Dispatch</span><span>Compliance Branch</span><span>Weighted Aggregation</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">MAFB Key Designs</p>
+      <h2 class="slide-title stagger">The Full Output Chain from Data Preheat to Compliance Interception</h2>
+      <div class="detail-grid">
+        <article class="glass-card stagger"><h3>Unified Preheat</h3><p>Five agents share preheated data, avoiding separate quote, fundamental, and risk pulls while reducing database conflicts.</p></article>
+        <article class="glass-card stagger"><h3>Strong JSON Constraint</h3><p>Each agent outputs only agent_name / score / reason, with score strictly constrained from -2 to +2.</p></article>
+        <article class="glass-card stagger"><h3>Rule Fallback</h3><p>data_not_ready is returned only when all core features are missing; model failures fall back to the rule engine.</p></article>
+        <article class="glass-card stagger"><h3>Final Report</h3><p>weighted_total, scores, reasons, single_fund_analysis, technical_summary, risk_summary, compliance, disclaimer.</p></article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Five Sub-Agents</p>
+      <h2 class="slide-title stagger">Parallel Processing, Distinct Responsibilities</h2>
+      <div class="agent-grid focus-cards">
+        <article class="glass-card focus-card stagger"><h3>Fundamental</h3><p>snapshot + fundamentals + news assist; metric_hints: concentration / drift / manager / scale / sharpe / drawdown.</p><span>weight 0.24</span></article>
+        <article class="glass-card focus-card stagger"><h3>Technical</h3><p>nav_rows_for_technical, technical_retrieval, EMA / Bias / RSI / MACD; degrades when NAV data is insufficient.</p><span>weight 0.24</span></article>
+        <article class="glass-card focus-card stagger"><h3>Risk</h3><p>risk_summary, rating, drawdown, volatility, VaR95, Sortino, liquidity, correlation, and risk_warning.</p><span>weight 0.22</span></article>
+        <article class="glass-card focus-card stagger"><h3>Attribution</h3><p>Prioritizes a rule engine, performance_style_attribution, excess return proxy, and return source decomposition.</p><span>weight 0.18</span></article>
+        <article class="glass-card focus-card stagger"><h3>Profiling</h3><p>The only agent allowed to reference user_profile JSON; inputs fund_data + user_profile + risk_level to judge profile fit / mismatch.</p><span>weight 0.12</span></article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Compliance & Prompt Engineering</p>
+      <h2 class="slide-title stagger">Strict Output Constraints with Professional Guardrails First</h2>
+      <div class="slide-grid two">
+        <div class="glass-card code-card stagger">
+          <h3>_build_score_prompt</h3>
+          <pre><code>{
+  "agent_name": "risk",
+  "score": -2 to +2,
+  "reason": "1) Core conclusion\n2) Hard facts\n3) Logic\n4) Score tag"
+}</code></pre>
+        </div>
+        <div class="glass-card stagger">
+          <h3>Model Calling Strategy</h3>
+          <ul class="check-list">
+            <li>Primary: DashScope qwen-plus</li>
+            <li>Canary: qwen3 whitelist trial + fallback</li>
+            <li>Concurrency gate + timeout control</li>
+            <li>Failure fallback to rule engine</li>
+            <li>Trace: llm_try / llm_raw / agent_done / queue</li>
+          </ul>
+        </div>
+      </div>
+      <div class="detail-grid three stagger">
+        <article class="glass-card"><h3>Prompt Guardrail</h3><p>reason must include: 1) core conclusion, 2) at least two hard factual values, 3) logic chain, and 4) score tag.</p></article>
+        <article class="glass-card"><h3>Profile Boundary</h3><p>Non-profiling agents are forbidden to mention user / profile / fit, preventing personality preference from contaminating fundamental and risk judgments.</p></article>
+        <article class="glass-card"><h3>Compliance Agent</h3><p>Review 5-agent output -> Flag violations -> Trigger blocked branch -> Generate disclaimer.</p></article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Bidirectional Replay & Bazi Selection</p>
+      <h2 class="slide-title stagger">Use Metaphysics for Stickiness, RAG for Replay Quality</h2>
+      <div class="focus-cards">
+        <article class="glass-card focus-card stagger"><h3>Trade -> Notes</h3><p>After trade-curve features are written, cosine similarity is matched against same-user, same-fund history; hits route to history_compare.</p></article>
+        <article class="glass-card focus-card stagger"><h3>Note -> Trades</h3><p>Note vectors retrieve ReflectionEmbedding, FAISS is preferred, NumPy dot is the fallback, then trade_id / symbol / profit are reverse-looked up.</p></article>
+        <article class="glass-card focus-card stagger"><h3>Bazi Selection</h3><p>Birthday semantic parsing becomes a personalized prompt seed, while the core selection still relies on factor strategy, candidate-pool scoring, and LLM Top5 explanation.</p></article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Trade & Replay</p>
+      <h2 class="slide-title stagger">Cross-Time Replay: From Trades to Notes, from Notes to Trades</h2>
+      <div class="replay-diagram stagger">
+        <div class="glass-card flow-box">TradeCurveFeature<br><small>30-point NAV normalization</small></div>
+        <div class="connector"></div>
+        <div class="glass-card flow-box">Similarity Routing<br><small>history_compare / native_analysis</small></div>
+        <div class="connector"></div>
+        <div class="glass-card flow-box">ReflectionEmbedding<br><small>FAISS first, NumPy fallback</small></div>
+      </div>
+      <div class="chips stagger"><span>POST /replay/analyze/trade/{trade_id}</span><span>POST /replay/analyze/note</span><span>REPLAY_ENABLE_FAISS=true</span></div>
+      <p class="lead narrow stagger">New trades and notes automatically maintain vector features, and write failures do not block the main flow.</p>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Two-Layer AI Analysis</p>
+      <h2 class="slide-title stagger">Static Diagnosis + Retrieval-Based Replay</h2>
+      <div class="slide-grid two">
+        <article class="glass-card stagger">
+          <span class="card-kicker">Layer A</span>
+          <h3>Single-Trade AI Diagnosis</h3>
+          <p>POST /api/v1/ai/analyze/{trade_id}; impl: analyze_trade() in qwen_finance.py; key -> model call, no-key -> _local_analysis() rule engine.</p>
+        </article>
+        <article class="glass-card stagger">
+          <span class="card-kicker">Layer B</span>
+          <h3>Replay AI with Retrieval</h3>
+          <p>Impl: _llm_replay_analysis(); inputs anonymized object, similar samples, and routing result; parses direct JSON or extracts a JSON block, with fixed-advice fallback on failure.</p>
+        </article>
+      </div>
+      <div class="chips stagger"><span>Select trade -> analyzeTrade</span><span>run analyzeReplayByTrade</span><span>Save note -> analyzeReplayByNote</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">AI Fund Selector</p>
+      <h2 class="slide-title stagger">Natural Language -> Financial Strategy -> Function Call -> LLM Explanation</h2>
+      <div class="stage-rail stagger">
+        <div>Birthday Parse</div><div>Finance Intent</div><div>Factor Bundle</div><div>Preference</div><div>Top Pool</div><div>Live Quotes</div><div>LLM Top5</div>
+      </div>
+      <div class="slide-grid three">
+        <article class="glass-card stagger"><h3>Semantic Parse</h3><p>Birthday, mood, and investment intent are parsed into intent / mapped_sectors / strategy_style.</p></article>
+        <article class="glass-card stagger"><h3>Rule Candidate Pool</h3><p>Factor strategy bundles drive the Top20 candidate pool, with fallback at every stage.</p></article>
+        <article class="glass-card stagger"><h3>SSE Streaming</h3><p>/fbti-select/stream pushes stage-by-stage progress, increasing trust in the AI workflow.</p></article>
+      </div>
+      <div class="chips stagger"><span>POST /agent/ai/fbti-select</span><span>/intent strategy preview</span><span>/stream SSE push</span><span>Fixed FBTI_LLM_MODEL=qwen-plus</span><span>Forced JSON schema</span></div>
+    </section>
+
+    <section class="slide image-slide">
+      <p class="eyebrow stagger">System Demo / Dashboard</p>
+      <h2 class="slide-title stagger">Core Dashboard: Returns, Curves, and Financial Hotspots</h2>
+      <div class="image-feature-frame screenshot-frame stagger">
+        <div class="shot-chrome">
+          <span></span><span></span><span></span>
+          <strong>Dashboard · Click image to preview replace</strong>
+        </div>
+        <img class="editable-image" src="./assets/demo-dashboard.png" alt="FINANO Dashboard screenshot">
+      </div>
+    </section>
+
+    <section class="slide image-slide">
+      <p class="eyebrow stagger">System Demo / MAFB Results</p>
+      <h2 class="slide-title stagger">MAFB Results: Fund NAV Curve and Structured Output</h2>
+      <div class="demo-screenshot-grid stagger">
+        <div class="image-feature-frame screenshot-frame compact">
+          <div class="shot-chrome"><span></span><span></span><span></span><strong>MAFB Results 1</strong></div>
+          <img class="editable-image" src="./assets/demo-mafb-results-1.png" alt="MAFB Results fund NAV curve screenshot">
+        </div>
+        <div class="image-feature-frame screenshot-frame compact">
+          <div class="shot-chrome"><span></span><span></span><span></span><strong>MAFB Results 2</strong></div>
+          <img class="editable-image" src="./assets/demo-mafb-results-2.png" alt="MAFB Results structured output screenshot">
+        </div>
+      </div>
+    </section>
+
+    <section class="slide image-slide">
+      <p class="eyebrow stagger">System Demo / RAG Retrieval</p>
+      <h2 class="slide-title stagger">RAG Retrieval: Trade Replay and Historical Reflection Matching</h2>
+      <div class="demo-screenshot-grid stagger">
+        <div class="image-feature-frame screenshot-frame compact">
+          <div class="shot-chrome"><span></span><span></span><span></span><strong>RAG Retrieval 1</strong></div>
+          <img class="editable-image" src="./assets/demo-rag-retrieval-1.png" alt="RAG Retrieval trade and replay screenshot">
+        </div>
+        <div class="image-feature-frame screenshot-frame compact">
+          <div class="shot-chrome"><span></span><span></span><span></span><strong>RAG Retrieval 2</strong></div>
+          <img class="editable-image" src="./assets/demo-rag-retrieval-2.png" alt="RAG Retrieval historical reflection matching screenshot">
+        </div>
+      </div>
+    </section>
+
+    <section class="slide image-slide">
+      <p class="eyebrow stagger">System Demo / AI Fund Select</p>
+      <h2 class="slide-title stagger">AI Fund Select: From Entertainment Input to Explainable Top5</h2>
+      <div class="demo-screenshot-grid stagger">
+        <div class="image-feature-frame screenshot-frame compact">
+          <div class="shot-chrome"><span></span><span></span><span></span><strong>AI Fund Select 1</strong></div>
+          <img class="editable-image" src="./assets/demo-ai-fund-select-1.png" alt="AI Fund Select input and execution screenshot">
+        </div>
+        <div class="image-feature-frame screenshot-frame compact">
+          <div class="shot-chrome"><span></span><span></span><span></span><strong>AI Fund Select 2</strong></div>
+          <img class="editable-image" src="./assets/demo-ai-fund-select-2.png" alt="AI Fund Select results screenshot">
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Project Summary</p>
+      <h2 class="slide-title stagger">Technical Highlights and Course Takeaways</h2>
+      <div class="summary-columns">
+        <div class="glass-card stagger">
+          <h3>Technical Highlights</h3>
+          <ul class="check-list">
+            <li>FBTI personalization: 8Q -> 4D -> 16T</li>
+            <li>Bidirectional retrieval: Trade -> Notes + Note -> Trades</li>
+            <li>MAFB 5-way parallelism + unified preheat + compliance</li>
+            <li>Unified Prompt Template + JSON constraint + metric_hints</li>
+            <li>AI Fund Selector 7-stage semantic orchestration + SSE</li>
+            <li>Full-chain fallback: no crash when any stage fails</li>
+          </ul>
+        </div>
+        <div class="glass-card stagger">
+          <h3>Course Takeaways</h3>
+          <ul class="check-list">
+            <li>LangGraph State Machine + Send parallel</li>
+            <li>Prompt JSON structuring + multi-model routing</li>
+            <li>Multi-Agent Collaboration: differentiated data sources + unified scoring</li>
+            <li>RAG: Local Embedding + FAISS retrieval</li>
+            <li>React 18 + FastAPI + Docker end-to-end</li>
+          </ul>
+        </div>
+      </div>
+      <p class="caption stagger">GitHub: github.com/Sylvia2001vck/FINANO · Open source for educational demo only, not investment advice</p>
+    </section>
+
+    <section class="slide section-break">
+      <p class="eyebrow stagger">Part 3</p>
+      <h2 class="gradient-title stagger">Industrial & Market Analysis</h2>
+      <p class="lead stagger">AI + wealth management is growing rapidly, but Gen-Z needs a more personalized and entertaining entry point.</p>
+    </section>
+
+    <section class="slide market-slide">
+      <p class="eyebrow stagger">Market Environment & Size</p>
+      <h2 class="slide-title stagger">AI Wealth Management Is Booming, but Tools for Young Users Are Missing</h2>
+      <div class="chart-card glass-card stagger">
+        <svg class="growth-chart" viewBox="0 0 760 330" aria-label="Market growth line chart">
+          <polyline class="grid-line" points="60,265 700,265"/>
+          <polyline class="grid-line" points="60,205 700,205"/>
+          <polyline class="grid-line" points="60,145 700,145"/>
+          <polyline class="grid-line" points="60,85 700,85"/>
+          <path class="chart-line" d="M75 260 C170 238, 210 220, 275 204 S390 158, 455 136 S575 92, 690 55"/>
+          <circle class="chart-dot" cx="690" cy="55" r="8"/>
+        </svg>
+        <div class="chart-stats">
+          <div><strong class="count" data-target="30">0</strong><span>% CAGR</span></div>
+          <div><strong class="count" data-target="3">0</strong><span>Core Market Gaps</span></div>
+          <div><strong>Gen-Z</strong><span>MBTI / Metaphysics / AI Native</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Competitive Advantage</p>
+      <h2 class="slide-title stagger">Finano vs. Traditional Robo-Advisors vs. General LLMs</h2>
+      <div class="comparison-grid">
+        <article class="glass-card stagger"><h3>Traditional Robo-Advisors</h3><p>Professional in asset allocation, but shallow in personality understanding, weak in interaction, and reliant on returns rather than relationships for retention.</p></article>
+        <article class="glass-card hot stagger"><h3>Finano</h3><p>FBTI virality, Bazi emotional value, a professional MAFB foundation, and a bidirectional replay moat.</p></article>
+        <article class="glass-card stagger"><h3>General LLMs</h3><p>Strong expression ability, but lacking financial data sources, compliance interception, investment history, and reusable analysis pipelines.</p></article>
+      </div>
+    </section>
+
+    <section class="slide section-break">
+      <p class="eyebrow stagger">Part 4</p>
+      <h2 class="gradient-title stagger">Marketing & Operation Plan</h2>
+      <p class="lead stagger">Use FBTI cards as an acquisition flywheel and replay loops for long-term retention.</p>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Marketing Mix: 4Ps</p>
+      <h2 class="slide-title stagger">From Personality-Test Virality to Subscription Conversion</h2>
+      <div class="agenda-grid four">
+        <article class="glass-card stagger"><span>Product</span><h3>Personalized AI Wealth Assistant</h3><p>FBTI + MAFB + Replay + Fund Selector.</p></article>
+        <article class="glass-card stagger"><span>Price</span><h3>Freemium + B2B API</h3><p>Standard free tier, Diamond at ¥39/month or ¥369/year, plus customized institutional API licensing.</p></article>
+        <article class="glass-card stagger"><span>Place</span><h3>Social Media + GitHub</h3><p>Share personality cards and attract open-source communities to validate the architecture.</p></article>
+        <article class="glass-card stagger"><span>Promotion</span><h3>Viral Promotion</h3><p>Identity labels such as 'I am an RLDC Holder' lower the sharing barrier.</p></article>
+      </div>
+    </section>
+
+    <section class="slide loop-slide">
+      <p class="eyebrow stagger">Business Process</p>
+      <h2 class="slide-title stagger">Product Operating Loop</h2>
+      <div class="loop stagger">
+        <div>Personality Assessment</div><span></span><div>Multi-Dimensional Analysis</div><span></span><div>Fund Selection Execution</div><span></span><div>Note Replay</div><span></span><div>Loop Optimization</div>
+      </div>
+      <p class="lead narrow stagger">Assessment -> Analysis -> Execution -> Replay -> Optimization. Every interaction strengthens the user profile and improves replay quality.</p>
+    </section>
+
+    <section class="slide section-break">
+      <p class="eyebrow stagger">Part 5</p>
+      <h2 class="gradient-title stagger">Management Team & Financial Plan</h2>
+      <p class="lead stagger">AI engineering, behavioral finance, full-stack development, and an ultra-low-cost structure create early advantages.</p>
+    </section>
+
+    <section class="slide pricing-slide">
+      <p class="eyebrow stagger">Pricing Model</p>
+      <h2 class="slide-title stagger">Freemium Acquisition, Premium Monetization, B2B API Licensing</h2>
+      <div class="pricing-grid">
+        <article class="glass-card pricing-tier stagger">
+          <span class="card-kicker">Standard</span>
+          <h3>Free</h3>
+          <p class="pricing-price">¥0</p>
+          <ul class="check-list">
+            <li>Basic FBTI assessment</li>
+            <li>1 AI fund selection per day</li>
+            <li>Personality card sharing</li>
+          </ul>
+        </article>
+        <article class="glass-card pricing-tier featured stagger">
+          <span class="card-kicker">Diamond · Premium</span>
+          <h3>Subscription</h3>
+          <p class="pricing-price">¥39<span>/mo</span> · ¥369<span>/yr</span></p>
+          <ul class="check-list">
+            <li>MAFB 8-node deep replay</li>
+            <li>Unlimited real-time calculations</li>
+            <li>Personal wealth alignment insights</li>
+          </ul>
+        </article>
+        <article class="glass-card pricing-tier stagger">
+          <span class="card-kicker">Institutional</span>
+          <h3>B2B API</h3>
+          <p class="pricing-price">Custom<span> annual license</span></p>
+          <ul class="check-list">
+            <li>White-label FBTI + MAFB modules</li>
+            <li>Compliance-ready agent pipeline</li>
+            <li>Wealth community / brokerage integration</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide team-slide">
+      <p class="eyebrow stagger">Management Team</p>
+      <h2 class="slide-title stagger">Sylvia Agile Team · Click Avatars to Add Photos</h2>
+      <div class="team-grid">
+        <article class="glass-card team-card stagger is-filled">
+          <img class="editable-image team-avatar" src="./assets/team-sylvia.png" alt="Sylvia founder photo">
+          <div class="team-copy">
+            <h3 contenteditable="true" spellcheck="false">Sylvia</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Tech & Product Lead · Sole Founder · 100% Control</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">HKUST background. LLM engineering, LangGraph multi-agent architecture, full-stack delivery, and end-to-end product integration.</p>
+          </div>
+        </article>
+        <article class="glass-card team-card stagger is-filled">
+          <img class="editable-image team-avatar" src="./assets/team-zack.png" alt="Zack CSO photo">
+          <div class="team-copy">
+            <h3 contenteditable="true" spellcheck="false">Zack</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Chief Strategy Officer · CSO</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Strategic architect for Finano's long-term vision and capital roadmap. Led the financial plan and exit strategy, mapping acquisition targets (banks, fintech giants) and IPO trajectory. Bridges technical capabilities with market expectations and oversees fund allocation across R&D and marketing.</p>
+          </div>
+        </article>
+        <article class="glass-card team-card stagger is-placeholder">
+          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Team member 4 photo">
+          <div class="team-copy">
+            <h3 contenteditable="true" spellcheck="false">Member 3</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Role · Division</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Click to add photo, name, and introduction.</p>
+          </div>
+        </article>
+        <article class="glass-card team-card stagger is-placeholder">
+          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Team member 5 photo">
+          <div class="team-copy">
+            <h3 contenteditable="true" spellcheck="false">Member 4</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Role · Division</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Click to add photo, name, and introduction.</p>
+          </div>
+        </article>
+        <article class="glass-card team-card stagger is-placeholder">
+          <img class="editable-image team-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect fill='%2318181b' width='120' height='120'/%3E%3Ctext x='60' y='66' text-anchor='middle' fill='%2371717a' font-size='14' font-family='Arial'%3EPhoto%3C/text%3E%3C/svg%3E" alt="Team member 5 photo">
+          <div class="team-copy">
+            <h3 contenteditable="true" spellcheck="false">Member 5</h3>
+            <p class="team-role" contenteditable="true" spellcheck="false">Role · Division</p>
+            <p class="team-bio" contenteditable="true" spellcheck="false">Click to add photo, name, and introduction.</p>
+          </div>
+        </article>
+      </div>
+      <p class="lead narrow stagger">Core team: Sylvia (founder) + Zack (CSO) + 4 editable member slots. Click any avatar to replace a photo; click text to edit bios.</p>
+    </section>
+
+    <section class="slide equity-slide">
+      <p class="eyebrow stagger">Equity Structure</p>
+      <h2 class="slide-title stagger">Sylvia 100% Control · 40% Team Incentive Pool</h2>
+      <div class="slide-grid two">
+        <div class="glass-card equity-panel stagger">
+          <div class="equity-pie" aria-hidden="true"><span class="equity-pie-label">100%</span></div>
+          <ul class="equity-legend">
+            <li>
+              <span class="equity-dot sylvia"></span>
+              <div class="equity-legend-copy">
+                <div class="equity-legend-top"><strong>Sylvia</strong><em>100%</em></div>
+                <span>Sole Founder · Full Control · Tech & Product Lead</span>
+              </div>
+            </li>
+            <li>
+              <span class="equity-dot pool"></span>
+              <div class="equity-legend-copy">
+                <div class="equity-legend-top"><strong>Team Incentive Pool</strong><em>40%</em></div>
+                <span>Reserved for core developers & key hires (no co-founder equity)</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <article class="glass-card stagger">
+          <h3>Complementary Skills</h3>
+          <div class="skill-matrix">
+            <div><span>LLM / Agents</span><strong>Sylvia</strong></div>
+            <div><span>Quant / Risk</span><strong>Incentive Hire</strong></div>
+            <div><span>Full-Stack</span><strong>Sylvia</strong></div>
+            <div><span>Compliance</span><strong>Incentive Hire</strong></div>
+            <div><span>Strategy / Capital</span><strong>Zack</strong></div>
+            <div><span>GTM / Virality</span><strong>Zack + Team</strong></div>
+          </div>
+          <p class="lead narrow">Sylvia holds 100% control as sole founder. Zack (CSO) leads strategy, financial planning, and exit mapping; the 40% incentive pool remains reserved for future core hires.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide funding-slide">
+      <p class="eyebrow stagger">Funding Ask & Use of Funds</p>
+      <h2 class="slide-title stagger">HKD 500,000 for 10% · 12-Month Runway</h2>
+      <div class="slide-grid two">
+        <div class="glass-card funding-ask stagger">
+          <div class="funding-hero">
+            <strong class="count" data-target="500000">0</strong>
+            <span>HKD raise · 10% equity offered</span>
+          </div>
+          <p>Implied pre-money valuation: <strong>HKD 5.0M</strong>. Funds deploy over 12 months across compliance, acquisition, and compute reserves.</p>
+          <div class="funding-metrics">
+            <div><strong>12 mo</strong><span>Runway target</span></div>
+            <div><strong>10%</strong><span>Equity offered</span></div>
+            <div><strong>5M</strong><span>HKD implied valuation</span></div>
+          </div>
+        </div>
+        <div class="glass-card funds-panel stagger">
+          <h3>Use of Funds</h3>
+          <div class="funds-stack">
+            <div class="funds-row" data-height="40"><span>R&D & Compute Infrastructure</span><div class="funds-bar"><i></i></div><strong>40%</strong></div>
+            <div class="funds-row" data-height="30"><span>Marketing & Viral Acquisition</span><div class="funds-bar"><i></i></div><strong>30%</strong></div>
+            <div class="funds-row" data-height="20"><span>Legal Compliance & Financial API</span><div class="funds-bar"><i></i></div><strong>20%</strong></div>
+            <div class="funds-row" data-height="10"><span>General Operations</span><div class="funds-bar"><i></i></div><strong>10%</strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Financial Plan & Initial Capital</p>
+      <h2 class="slide-title stagger" data-type-text="Low Burn Rate, Low Break-Even Point">Low Burn Rate, Low Break-Even Point</h2>
+      <div class="slide-grid two">
+        <div class="glass-card bar-card stagger">
+          <div class="bar-row"><span>Cursor Pro / Pro+</span><div class="bar" data-height="82"><i></i></div><strong>¥600/month</strong></div>
+          <div class="bar-row"><span>Cloud Server</span><div class="bar" data-height="16"><i></i></div><strong>¥100/month</strong></div>
+          <div class="bar-row"><span>LLM API</span><div class="bar" data-height="8"><i></i></div><strong>¥40/month</strong></div>
+          <div class="total-cost"><strong class="count" data-target="740">0</strong><span>RMB / month current MVP burn</span></div>
+        </div>
+        <div class="glass-card stagger">
+          <h3>Break-even</h3>
+          <div class="big-number"><span class="count" data-target="88">0</span><small>Diamond members at ¥39/month</small></div>
+          <p>Post-funding scale: at 10,000 users with 3% Diamond conversion, monthly subscription revenue reaches ~¥11,700; two B2B API licenses at ¥2,000/month each push total recurring revenue above ¥15,700/month, covering scaled compute and ops.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide revenue-slide">
+      <p class="eyebrow stagger">Revenue Forecast</p>
+      <h2 class="slide-title stagger">3-Year Revenue Projection with Key Assumptions</h2>
+      <div class="chart-card glass-card stagger">
+        <div class="revenue-bars" aria-label="Three-year revenue projection">
+          <div class="revenue-col">
+            <div class="revenue-bar" data-height="22"><i></i></div>
+            <strong class="count revenue-label" data-target="94">0</strong>
+            <span>Year 1</span>
+            <small>¥94K ARR</small>
+          </div>
+          <div class="revenue-col">
+            <div class="revenue-bar" data-height="52"><i></i></div>
+            <strong class="count revenue-label" data-target="468">0</strong>
+            <span>Year 2</span>
+            <small>¥468K ARR</small>
+          </div>
+          <div class="revenue-col">
+            <div class="revenue-bar" data-height="88"><i></i></div>
+            <strong class="count revenue-label" data-target="1240">0</strong>
+            <span>Year 3</span>
+            <small>¥1.24M ARR</small>
+          </div>
+        </div>
+        <div class="assumption-panel">
+          <h3>Assumptions</h3>
+          <ul class="check-list">
+            <li><strong>Year 1:</strong> 2,000 MAU · 4% Diamond · 1 B2B API (¥8K/mo)</li>
+            <li><strong>Year 2:</strong> 8,000 MAU · 5% Diamond · 2 B2B APIs</li>
+            <li><strong>Year 3:</strong> 20,000 MAU · 6% Diamond · 4 B2B APIs + annual plans</li>
+            <li><strong>ARPU:</strong> ¥39/mo subscription + custom B2B licensing</li>
+            <li><strong>Payback:</strong> &lt; 18 months on HKD 500K raise (base case)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide section-break">
+      <p class="eyebrow stagger">Part 6</p>
+      <h2 class="gradient-title stagger">Lean Canvas & Exit Strategy</h2>
+      <p class="lead stagger">FINANO is 16Personalities meets Wealthfront, Spotify Discover Weekly for mutual funds.</p>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Lean Canvas Summary</p>
+      <h2 class="slide-title stagger">One Canvas to Explain the Business Model</h2>
+      <div class="lean-grid">
+        <article class="glass-card stagger"><h3>Problem</h3><p>Generic advice lacks behavioral personalization; traders struggle to connect historical market contexts with current decisions; financial tools feel clinical and boring.</p></article>
+        <article class="glass-card stagger"><h3>Solution</h3><p>FBTI & Bazi Profiling, Bazi-Infused AI Fund Selection, Bidirectional Replay.</p></article>
+        <article class="glass-card stagger"><h3>UVP</h3><p>Behavioral finance + traditional metaphysics + multi-agent AI deliver hyper-personalized, interactive fund selection and strategy replay.</p></article>
+        <article class="glass-card stagger"><h3>Unfair Advantage</h3><p>16-type FBTI, Bazi routing, strict JSON prompts, and a LangGraph 8-node parallel compliance pipeline.</p></article>
+        <article class="glass-card stagger"><h3>Customer Segments</h3><p>Retail investors, investment-journal users, and Gen-Z users attracted by MBTI + metaphysics.</p></article>
+        <article class="glass-card stagger"><h3>Key Metrics</h3><p>Assessment completion, share rate, pipeline success, replay retention, and subscription conversion.</p></article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Lean Canvas Details</p>
+      <h2 class="slide-title stagger">Alternatives, Channels, and Early Adopters</h2>
+      <div class="lean-grid">
+        <article class="glass-card stagger"><h3>Existing Alternatives</h3><p>Traditional robo-advisors, manual trading journals/spreadsheets, and entertainment fortune-telling apps all lack the combination of real financial data + LLM agents + personalized replay.</p></article>
+        <article class="glass-card stagger"><h3>High-Level Concept</h3><p>16Personalities meets Wealthfront; Spotify Discover Weekly for mutual funds; GitHub Copilot for retail trading.</p></article>
+        <article class="glass-card stagger"><h3>Channels</h3><p>GitHub & open-source communities, social-media FBTI card virality, finance/quant student communities, and API licensing to wealth-content communities.</p></article>
+        <article class="glass-card stagger"><h3>Early Adopters</h3><p>AI-finance metaphysics enthusiasts, quant finance students, open-source developers, and Gen-Z investors who love MBTI and investment journaling.</p></article>
+        <article class="glass-card stagger"><h3>Customer Segments</h3><p>Retail investors seeking data-driven personalization, tech-savvy traders maintaining investment journals, and young users looking for an entertaining entry point.</p></article>
+        <article class="glass-card stagger"><h3>Core Message</h3><p>An AI financial lifecycle co-pilot combining FBTI, Bazi, LangGraph multi-agent orchestration, and bidirectional RAG replay.</p></article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <p class="eyebrow stagger">Exit Strategy</p>
+      <h2 class="slide-title stagger">Investment Creates Value · Two Exit Paths</h2>
+      <div class="exit-grid">
+        <article class="glass-card stagger">
+          <span class="card-kicker">Value Creation</span>
+          <h3>How HKD 500K Builds the Moat</h3>
+          <p>Compliance-ready MAFB pipeline, FBTI viral acquisition, and compute reserves convert capital into defensible product velocity and broker-ready modules within 12 months.</p>
+        </article>
+        <article class="glass-card stagger"><span class="card-kicker">Path A</span><h3>Acquisition by Leading Brokerages / Financial Groups</h3><p>Platforms such as Futu and Tiger need Finano's FBTI virality and metaphysical wealth modules to activate Gen-Z retail traffic.</p></article>
+        <article class="glass-card stagger"><span class="card-kicker">Path B</span><h3>Independent SaaS Scaling and IPO</h3><p>Long-term commercialization through a high-retention financial traffic entry point, API licensing, and subscription revenue.</p></article>
+      </div>
+    </section>
+
+    <section class="slide qa">
+      <p class="eyebrow stagger">Q&A</p>
+      <h2 class="slide-title stagger">Is Metaphysical Fund Selection Unscientific?</h2>
+      <div class="glass-card qa-card stagger">
+        <p>We are not replacing science with metaphysics. We use metaphysics to provide emotional value, while multi-agent systems execute scientific quantification.</p>
+        <p>In our system, birthday/Bazi is essentially a personalized prompt seed. The frontend presents fortune-style companionship that matches user expectations, while the underlying Fundamental Agent and Risk Agent still use serious quantitative factors such as fund financial reports, max drawdown, and Sharpe ratio.</p>
+        <p>Metaphysics solves acquisition and stickiness; AI agents safeguard professionalism and risk control. That is Finano's business moat.</p>
+      </div>
+    </section>
+
+    <section class="slide qa final-qa-slide">
+      <p class="eyebrow stagger">Q&A</p>
+      <h2 class="slide-title stagger">Can We Afford API Compute Costs at Tens of Thousands of Users?</h2>
+      <div class="glass-card qa-card stagger">
+        <p>The high call volume during development mainly came from Cursor advanced agents performing architecture refactoring and frontend-backend integration. This is a one-time R&D investment.</p>
+        <p>After launch, each request will be cache-optimized and routed to cost-efficient model APIs. The token cost of a single 5-way parallel multi-agent request can be compressed to roughly ¥0.05-¥0.10.</p>
+        <p>With elastic extra-credit packages, heavy users pay for additional usage themselves, creating a SaaS model where fixed costs are locked and variable costs are shared by paying users.</p>
+      </div>
+      <div class="final-logo-card stagger">
+        <div class="finano-word final" data-text="FINANO">FINANO</div>
+        <span>AI Wealth Co-Pilot · Behavioral Finance Driven</span>
+      </div>
+      <div class="final-cta-row stagger">
+        <a class="glow-button cta-button" href="http://43.129.199.236:8081" target="_blank" rel="noopener noreferrer">Click to try our product</a>
+        <a class="ghost-button" href="https://github.com/Sylvia2001vck/FINANO" target="_blank" rel="noopener noreferrer">github.com/Sylvia2001vck/FINANO</a>
+      </div>
+    </section>
+  </main>
+
+  <audio id="deck-bgm" src="./assets/finano.mp3" loop preload="auto" aria-hidden="true"></audio>
+  <script src="./finano-deck.js"></script>
+</body>
+</html>

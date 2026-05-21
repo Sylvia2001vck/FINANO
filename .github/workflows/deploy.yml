@@ -57,7 +57,9 @@ jobs:
         with:
           lfs: true
 
-      - name: Sync pitch-deck to VPS
+      - name: Sync pitch-deck to VPS (attempt 1)
+        id: pitch_ssh1
+        continue-on-error: true
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -65,6 +67,27 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 90s
+          script: |
+            cd /opt/finano
+            git fetch origin main
+            git reset --hard origin/main
+            if command -v git-lfs >/dev/null 2>&1; then
+              git lfs pull
+            fi
+            bash scripts/ensure-pitch-8082.sh
+            echo "Pitch deck only deploy done → :8082"
+
+      - name: Sync pitch-deck to VPS (attempt 2)
+        if: steps.pitch_ssh1.outcome == 'failure'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 90s
           script: |
             cd /opt/finano
             git fetch origin main

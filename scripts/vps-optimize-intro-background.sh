@@ -20,7 +20,7 @@ LOG="/tmp/finano-optimize-video.log"
       ffmpeg
   fi
   chmod +x scripts/optimize-intro-video.sh scripts/sync-pitch-deck.sh
-  bash scripts/optimize-intro-video.sh
+  bash scripts/optimize-intro-video.sh --force
   bash scripts/sync-pitch-deck.sh
   ls -lh pitch-deck/assets/finano_concept.mp4 /var/www/finano-pitch-ppt/assets/finano_concept.mp4
   echo "=== $(date -Is) done ==="

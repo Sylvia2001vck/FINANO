@@ -67,6 +67,20 @@ function initDeckBgm() {
   }, INTRO_BGM_DELAY_MS);
 }
 
+function unlockDeckAudio() {
+  bgmUnlocked = true;
+
+  document.querySelectorAll("video.intro-video").forEach((video) => {
+    video.muted = false;
+    video.volume = 0.85;
+    const playPromise = video.play();
+    if (playPromise?.catch) playPromise.catch(() => {});
+  });
+
+  document.querySelector(".intro-sound-hint")?.classList.add("is-hidden");
+  syncDeckBgm();
+}
+
 function goToSlide(index) {
   if (locked) return;
   const next = Math.max(0, Math.min(slides.length - 1, index));
@@ -303,6 +317,10 @@ function bindIntroVideo() {
     video.addEventListener("ended", () => {
       if (slides[current]?.contains(video)) go(1);
     });
+  });
+
+  ["pointerdown", "keydown"].forEach((eventName) => {
+    window.addEventListener(eventName, unlockDeckAudio, { once: true, passive: true });
   });
 }
 

@@ -65,7 +65,7 @@ jobs:
             set -euo pipefail
             cd /opt/finano
             chmod +x scripts/optimize-intro-video.sh scripts/sync-pitch-deck.sh
-            bash scripts/optimize-intro-video.sh
+            bash scripts/optimize-intro-video.sh --force
             bash scripts/sync-pitch-deck.sh
             echo "========== sizes =========="
             ls -lh pitch-deck/assets/finano_concept.mp4 pitch-deck/assets/finano_concept.source.mp4 2>/dev/null || true

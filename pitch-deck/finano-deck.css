@@ -389,6 +389,20 @@ body::before {
   /* backdrop-filter removed on intro — blurring while video plays is costly */
 }
 
+.intro-sound-hint {
+  margin: 0 0 14px;
+  color: var(--gold);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+
+.intro-sound-hint.is-hidden {
+  display: none;
+}
+
 .intro-title {
   font-size: clamp(4rem, 10vw, 10rem);
   margin-bottom: 14px;

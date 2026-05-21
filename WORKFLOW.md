@@ -26,3 +26,13 @@ git push origin main
 `d:\HKUST学习资料\Meeeee\商业书\finano-pitch-deck`
 
 改完后运行 `.\push-pitch.ps1`。
+
+## VPS 重启后 :8082 自动恢复
+
+在服务器执行一次（见 `pitch-deck/DEPLOY.md`）：
+
+```bash
+cd /opt/finano && bash scripts/install-pitch-deck-boot.sh
+```
+
+会安装 `finano-pitch-sync.service` 并 `systemctl enable nginx`。

@@ -36,8 +36,7 @@ jobs:
               - 'frontend/**'
               - 'backend/**'
               - 'docker-compose*.yml'
-              - 'scripts/vps-deploy.sh'
-              - 'scripts/setup-pitch-deck-nginx.sh'
+              - 'scripts/**'
               - '.github/workflows/deploy.yml'
               - '.gitattributes'
 
@@ -66,8 +65,7 @@ jobs:
             if command -v git-lfs >/dev/null 2>&1; then
               git lfs pull
             fi
-            mkdir -p /var/www/finano-pitch-ppt
-            rsync -a --delete pitch-deck/ /var/www/finano-pitch-ppt/
+            bash scripts/sync-pitch-deck.sh
             echo "Pitch deck only deploy done → :8082"
 
   # Slow path (10–30+ min): npm build + Docker backend pip install + compose up
@@ -124,7 +122,6 @@ jobs:
               git lfs pull
             fi
             bash scripts/vps-deploy.sh
-            if [ -d pitch-deck ]; then
-              mkdir -p /var/www/finano-pitch-ppt
-              rsync -a --delete pitch-deck/ /var/www/finano-pitch-ppt/
+            if [ -f scripts/sync-pitch-deck.sh ]; then
+              bash scripts/sync-pitch-deck.sh
             fi

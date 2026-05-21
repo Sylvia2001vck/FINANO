@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time: expose pitch-deck on TCP 8082 (run on VPS with sudo).
+# Nginx site for pitch-deck on TCP 8082 (called by install-pitch-deck-boot.sh).
 set -euo pipefail
 
 CONF_NAME="finano-pitch"
@@ -29,5 +29,6 @@ EOF
 
 sudo ln -sf "$CONF_PATH" "$ENABLED"
 sudo nginx -t
+sudo systemctl enable nginx
 sudo systemctl reload nginx
-echo "OK: pitch deck → http://<your-ip>:8082/ (open TCP 8082 in security group)"
+echo "OK: Nginx :8082 -> /var/www/finano-pitch-ppt"

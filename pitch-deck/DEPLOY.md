@@ -21,12 +21,25 @@ On push to `main`:
 
 The long log lines (`Downloading … whl`, `Installing collected packages`) come from **backend Docker image rebuild**, not from the HTML pitch deck.
 
-## One-time VPS setup (Nginx + firewall)
+## One-time VPS setup (Nginx + boot autostart + firewall)
 
 ```bash
 cd /opt/finano
-bash scripts/setup-pitch-deck-nginx.sh
+git pull origin main
+bash scripts/install-pitch-deck-boot.sh
 # Tencent Cloud security group: allow TCP 8082
+```
+
+This installs:
+
+- `finano-pitch-sync.service` — on **every reboot**, rsync `/opt/finano/pitch-deck` → `/var/www/finano-pitch-ppt` before Nginx starts
+- Nginx site on **8082**, `systemctl enable nginx` so it starts after instance restart
+
+Verify after reboot:
+
+```bash
+sudo systemctl status finano-pitch-sync.service nginx
+curl -I http://127.0.0.1:8082/
 ```
 
 Install Git LFS on the VPS if video/audio are missing after deploy:

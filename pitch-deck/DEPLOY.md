@@ -87,6 +87,19 @@ curl -I http://127.0.0.1:8082/assets/finano_concept.mp4      # expect HTTP 200
 
 Then hard-refresh the browser (Ctrl+F5). `sync-pitch-deck.sh` now runs `git lfs pull` automatically when `git-lfs` is installed.
 
+### Re-encode intro video (if GitHub Action disconnects during `apt install ffmpeg`)
+
+`ffmpeg` is already installed if you see that apt log — SSH in and run (won’t die if you close the terminal):
+
+```bash
+cd /opt/finano && git pull origin main
+chmod +x scripts/vps-optimize-intro-background.sh
+bash scripts/vps-optimize-intro-background.sh
+tail -f /tmp/finano-optimize-video.log
+```
+
+When log shows `done`, check file size ~2–5M and Ctrl+F5 the deck.
+
 ## Local edit
 
 Edit files in `pitch-deck/`, commit to FINANO `main`, push — no separate FINANOPITCHPPT repo required.

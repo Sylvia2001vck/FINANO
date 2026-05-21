@@ -13,12 +13,17 @@ if [[ ! -f "${OUT}" ]]; then
   exit 1
 fi
 
+size="$(wc -c < "${OUT}" | tr -d ' ')"
+if [[ "${size}" -gt 500000 ]] && [[ "${size}" -lt 6000000 ]]; then
+  echo "optimize-intro-video: ${OUT} is already ${size} bytes (~web size), skip encode."
+  exit 0
+fi
+
 if ! command -v ffmpeg >/dev/null 2>&1; then
   echo "Install ffmpeg: sudo apt install -y ffmpeg" >&2
   exit 1
 fi
 
-size="$(wc -c < "${OUT}" | tr -d ' ')"
 if [[ ! -f "${BAK}" ]]; then
   if [[ "${size}" -lt 1000000 ]]; then
     echo "ERROR: ${OUT} is only ${size} bytes (Git LFS pointer?). Run: git lfs pull" >&2
@@ -36,9 +41,10 @@ else
   INPUT="${OUT}"
 fi
 
+echo "optimize-intro-video: encoding ${INPUT} (preset fast, ~1–3 min on VPS)..."
 ffmpeg -y -i "${INPUT}" \
   -vf "scale='min(1280,iw)':-2" \
-  -c:v libx264 -preset medium -crf 24 -profile:v main -pix_fmt yuv420p \
+  -c:v libx264 -preset fast -crf 26 -profile:v main -pix_fmt yuv420p \
   -movflags +faststart \
   -an \
   "${TMP}"

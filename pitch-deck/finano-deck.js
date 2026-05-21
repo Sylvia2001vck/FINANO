@@ -42,6 +42,7 @@ function updateDeck(index) {
   handleSlideMedia(slides[current]);
   syncDeckBgm();
   runSlideAnimations(slides[current]);
+  document.body.classList.toggle("is-intro-active", isIntroSlide(current));
 }
 
 function isIntroSlide(index = current) {
@@ -371,37 +372,39 @@ function createParticle() {
 }
 
 function drawParticles() {
-  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  if (!document.body.classList.contains("is-intro-active")) {
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-  particles.forEach((particle, index) => {
-    particle.x += particle.vx;
-    particle.y += particle.vy;
+    particles.forEach((particle, index) => {
+      particle.x += particle.vx;
+      particle.y += particle.vy;
 
-    if (particle.x < -20) particle.x = window.innerWidth + 20;
-    if (particle.x > window.innerWidth + 20) particle.x = -20;
-    if (particle.y < -20) particle.y = window.innerHeight + 20;
-    if (particle.y > window.innerHeight + 20) particle.y = -20;
+      if (particle.x < -20) particle.x = window.innerWidth + 20;
+      if (particle.x > window.innerWidth + 20) particle.x = -20;
+      if (particle.y < -20) particle.y = window.innerHeight + 20;
+      if (particle.y > window.innerHeight + 20) particle.y = -20;
 
-    ctx.beginPath();
-    ctx.fillStyle = `rgba(${particle.hue}, 0.55)`;
-    ctx.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
-    ctx.fill();
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${particle.hue}, 0.55)`;
+      ctx.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+      ctx.fill();
 
-    for (let j = index + 1; j < particles.length; j += 1) {
-      const other = particles[j];
-      const dx = particle.x - other.x;
-      const dy = particle.y - other.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance < 145) {
-        ctx.beginPath();
-        ctx.strokeStyle = `rgba(212, 212, 216, ${0.1 * (1 - distance / 145)})`;
-        ctx.lineWidth = 1;
-        ctx.moveTo(particle.x, particle.y);
-        ctx.lineTo(other.x, other.y);
-        ctx.stroke();
+      for (let j = index + 1; j < particles.length; j += 1) {
+        const other = particles[j];
+        const dx = particle.x - other.x;
+        const dy = particle.y - other.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 145) {
+          ctx.beginPath();
+          ctx.strokeStyle = `rgba(212, 212, 216, ${0.1 * (1 - distance / 145)})`;
+          ctx.lineWidth = 1;
+          ctx.moveTo(particle.x, particle.y);
+          ctx.lineTo(other.x, other.y);
+          ctx.stroke();
+        }
       }
-    }
-  });
+    });
+  }
 
   requestAnimationFrame(drawParticles);
 }
@@ -418,6 +421,7 @@ initDeckBgm();
 resizeCanvas();
 drawParticles();
 updateDeck(0);
+document.body.classList.toggle("is-intro-active", isIntroSlide(0));
 
 window.addEventListener("keydown", handleKeyboard);
 window.addEventListener("wheel", handleWheel, { passive: true });

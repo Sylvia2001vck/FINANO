@@ -338,6 +338,17 @@ body::before {
   pointer-events: none;
 }
 
+/* During intro video: drop heavy GPU layers so desktop decode stays smooth */
+body.is-intro-active #particle-canvas,
+body.is-intro-active .film-grain,
+body.is-intro-active .global-spotlight,
+body.is-intro-active .parallax-stage,
+body.is-intro-active .ambient {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .intro-video-slide {
   padding: 0;
   background: #000;

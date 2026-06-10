@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.fbti_calculator import FBTI_PROFILES, calculate_fbti
+from app.services.fbti_calculator import FBTI_PROFILES, calculate_fbti, profile_row_for_code
 
 
 def score_fbti_code(answers: list[str]) -> str:
@@ -13,7 +13,7 @@ def score_fbti_code(answers: list[str]) -> str:
 
 
 def _shape_archetype_row(*, canonical_code: str, matched_code: str, nearest: bool) -> dict[str, Any]:
-    raw = FBTI_PROFILES[canonical_code]
+    raw = profile_row_for_code(canonical_code) or FBTI_PROFILES[canonical_code]
     return {
         "code": canonical_code,
         "matched_code": matched_code,

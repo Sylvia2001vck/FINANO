@@ -616,7 +616,16 @@ export default function MAFBPage() {
 
   const funds = fundBundle?.items ?? [];
   const fundTotal = fundBundle?.total ?? 0;
-  const catalogMode = fundBundle?.catalog_mode ?? "static";
+  const catalogMode = fundBundle?.catalog_mode ?? initCatalogMode ?? "static";
+  const isBochkMode = catalogMode === "bochk_hk";
+
+  useEffect(() => {
+    if (!isBochkMode) return;
+    const cur = form.getFieldValue("fund_code");
+    if (!cur || cur === "510300") {
+      form.setFieldsValue({ fund_code: "BM1024" });
+    }
+  }, [isBochkMode, form]);
   const sampleSeed = fundBundle?.sample_seed;
   const filterTotal = fundBundle?.filter_total;
 
@@ -823,6 +832,15 @@ export default function MAFBPage() {
     <div className="page-stack">
       <Typography.Title level={3}>{t("mafb.title")}</Typography.Title>
       <Typography.Paragraph type="secondary">{t("mafb.intro")}</Typography.Paragraph>
+      {isBochkMode ? (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t("mafb.bochkBadge")}
+          description={t("mafb.fundCodeHint")}
+        />
+      ) : null}
 
       <PageCard title={t("mafb.fundAndRun")}>
         {runLogVisible ? (
@@ -917,7 +935,7 @@ export default function MAFBPage() {
           form={form}
           layout="vertical"
           initialValues={{
-            fund_code: "510300",
+            fund_code: isBochkMode ? "BM1024" : "510300",
             include_fbti: true,
             nav_data_source: "auto"
           }}
@@ -927,15 +945,20 @@ export default function MAFBPage() {
             name="fund_code"
             rules={[
               { required: true, message: "请输入代码" },
-              {
-                pattern: /^(\d{5}|\d{6})(\.[Hh][Kk])?$/,
-                message: "大陆基金/ETF 为 6 位数字；港股常见为 5 位，可加后缀 .HK",
-              }
+              isBochkMode
+                ? {
+                    pattern: /^(BM\d{4}|MPF\d{4}|HK[A-Z0-9]{8,12})$/i,
+                    message: t("mafb.fundCodeHint")
+                  }
+                : {
+                    pattern: /^(\d{5}|\d{6})(\.[Hh][Kk])?$/,
+                    message: "大陆基金/ETF 为 6 位数字；港股常见为 5 位，可加后缀 .HK"
+                  }
             ]}
           >
             <Space.Compact style={{ width: "100%", maxWidth: 400 }}>
               <Input
-                placeholder="如 510300 或 02828 / 02828.HK"
+                placeholder={isBochkMode ? t("mafb.fundCodePh") : "如 510300 或 02828 / 02828.HK"}
                 maxLength={10}
                 style={{ flex: 1 }}
                 disabled={agentOpBusy}

@@ -1,4 +1,4 @@
-"""基金目录：默认内置演示池；可选 FUND_CATALOG_MODE=eastmoney_full 从天天基金公开 JS 加载全市场索引。"""
+"""基金目录：static 内置演示池；bochk_hk 中银香港演示池；eastmoney_full 天天基金全市场索引。"""
 
 from __future__ import annotations
 
@@ -75,6 +75,11 @@ _STATIC_FUNDS: list[dict[str, Any]] = [
 
 def static_demo_pool_size() -> int:
     """内置演示池只数（供 catalog-status 等展示）。"""
+    mode = (settings.fund_catalog_mode or "static").lower().strip()
+    if mode == "bochk_hk":
+        from app.services.bochk_data import load_bochk_catalog
+
+        return len(load_bochk_catalog())
     return len(_STATIC_FUNDS)
 
 
@@ -82,7 +87,15 @@ def _use_eastmoney_full() -> bool:
     return (settings.fund_catalog_mode or "static").lower().strip() == "eastmoney_full"
 
 
+def _use_bochk_hk() -> bool:
+    return (settings.fund_catalog_mode or "static").lower().strip() == "bochk_hk"
+
+
 def _catalog_rows() -> list[dict[str, Any]]:
+    if _use_bochk_hk():
+        from app.services.bochk_data import load_bochk_catalog
+
+        return load_bochk_catalog()
     if not _use_eastmoney_full():
         return _STATIC_FUNDS
     from app.agent.eastmoney_fund_loader import get_cached_full_catalog
@@ -105,6 +118,12 @@ def resolve_fund_code_by_name_query(query: str) -> str | None:
     q = (query or "").strip().lower()
     if len(q) < 2:
         return None
+    if _use_bochk_hk():
+        from app.services.bochk_data import resolve_bochk_fund_by_name_query
+
+        hit = resolve_bochk_fund_by_name_query(query)
+        if hit:
+            return hit
     rows = list_funds_catalog_only()
     names = [(str(r.get("name", "")).strip().lower(), str(r["code"])) for r in rows if r.get("code")]
     exact = [c for n, c in names if n == q]
@@ -219,16 +238,21 @@ def get_fund_by_code(code: str, *, include_live: bool | None = None) -> dict[str
     include_live：默认 None 表示跟随 FUND_LIVE_QUOTE_ENABLED；
     显式 False 时不请求估值（避免相似度等内部逻辑 N 次打网）。
     """
-    normalized = code.strip()
+    normalized = code.strip().upper()
     base: dict[str, Any] | None = None
-    if _use_eastmoney_full():
+    if _use_bochk_hk():
+        from app.services.bochk_data import lookup_bochk_fund
+
+        hit = lookup_bochk_fund(normalized)
+        base = dict(hit) if hit else None
+    elif _use_eastmoney_full():
         from app.agent.eastmoney_fund_loader import lookup_full_catalog
 
         hit = lookup_full_catalog(normalized)
         base = dict(hit) if hit else None
     else:
         for row in _STATIC_FUNDS:
-            if row["code"] == normalized:
+            if str(row["code"]).upper() == normalized:
                 base = dict(row)
                 break
     if not base:
@@ -236,7 +260,12 @@ def get_fund_by_code(code: str, *, include_live: bool | None = None) -> dict[str
     out = dict(base)
     want_live = settings.fund_live_quote_enabled if include_live is None else include_live
     if want_live:
-        live = fetch_fund_live_quote(normalized)
+        if _use_bochk_hk():
+            from app.services.bochk_data import fetch_bochk_mock_live_quote
+
+            live = fetch_bochk_mock_live_quote(normalized)
+        else:
+            live = fetch_fund_live_quote(normalized)
         if live:
             out["live_quote"] = live
     return out
@@ -260,7 +289,13 @@ def list_funds() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
         item = dict(row)
-        live = fetch_fund_live_quote(str(row["code"]))
+        code = str(row["code"])
+        if _use_bochk_hk():
+            from app.services.bochk_data import fetch_bochk_mock_live_quote
+
+            live = fetch_bochk_mock_live_quote(code)
+        else:
+            live = fetch_fund_live_quote(code)
         if live:
             item["live_quote"] = live
         out.append(item)

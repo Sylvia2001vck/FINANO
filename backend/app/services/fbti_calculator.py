@@ -4,7 +4,47 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.config import settings
+
 # 四维：R/S 稳健·激进 → L/T 长线·短线 → D/F 数据·直觉 → C/A 集中·分散
+
+_FBTI_FUND_PREF_HK: dict[str, str] = {
+    "RLDC": "恆生指數 ETF、中銀香港美元貨幣市場基金",
+    "RLDA": "中銀香港全天候港元基金、中銀保誠 MPF 保守基金",
+    "RLFC": "中銀香港全球策略基金、明星債券基金",
+    "RLFA": "中銀香港 ESG 可持續發展基金、均衡混合",
+    "RTDC": "中銀香港恒指 ETF 聯接基金、短債工具",
+    "RTDA": "中銀香港人民幣債券基金、套利策略",
+    "RTFC": "行業主題輪動、亞太高收益債",
+    "RTFA": "新基金試水、輕倉體驗",
+    "SLDC": "中銀香港科技創新基金、摩根太平洋科技",
+    "SLDA": "全球科技 + 醫療健康組合",
+    "SLFC": "科技創新單賽道重倉",
+    "SLFA": "創新主題、新興產業分散",
+    "STDC": "港股科技短線、熱門題材",
+    "STDA": "量化策略、高頻交易工具",
+    "STFC": "情緒龍頭、短線熱點",
+    "STFA": "題材輪動、短線博弈",
+}
+
+
+def is_bochk_fbti_context() -> bool:
+    return (settings.fund_catalog_mode or "static").strip().lower() == "bochk_hk"
+
+
+def profile_row_for_code(code: str) -> dict[str, Any] | None:
+    key = (code or "").strip().upper()
+    if len(key) != 4:
+        return None
+    row = _FBTI_PROFILES_RAW.get(key)
+    if not row:
+        return None
+    out = dict(row)
+    if is_bochk_fbti_context() and key in _FBTI_FUND_PREF_HK:
+        out["fund_preference"] = _FBTI_FUND_PREF_HK[key]
+    out["wuxing"] = _wuxing_for_code(key)
+    return out
+
 _FBTI_PROFILES_RAW: dict[str, dict[str, Any]] = {
     "RLDC": {
         "name": "持重者",
@@ -169,10 +209,8 @@ def calculate_fbti(answers: list[str]) -> str:
 
 def get_fbti_profile(code: str) -> dict[str, Any] | None:
     """按四位码返回完整画像字典（含 wuxing）；未知码返回 None。"""
-    key = (code or "").strip().upper()
-    if len(key) != 4:
-        return None
-    row = FBTI_PROFILES.get(key)
+    row = profile_row_for_code(code)
     if not row:
         return None
+    key = (code or "").strip().upper()
     return {"code": key, **row}

@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from app.agent.fund_catalog import all_fund_docs
+from app.agent.rag_corpus import all_rag_doc_pairs
 
 _INDEX = None
 _DOCS: list[str] = []
@@ -35,7 +35,7 @@ def _ensure_index() -> None:
         return
     import faiss
 
-    pairs = all_fund_docs()
+    pairs = all_rag_doc_pairs()
     _DOCS = [p[0] for p in pairs]
     _META = [p[1] for p in pairs]
     if not _DOCS:

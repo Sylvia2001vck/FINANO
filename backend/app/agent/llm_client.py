@@ -544,11 +544,23 @@ def invoke_finance_agent_score(
 
 def invoke_compliance_llm(text_blob: str, fund_code: str) -> ComplianceLLMResult | None:
     """合规 Agent：大模型辅助审查话术；硬规则在 nodes 中仍优先。"""
-    system = (
-        "你是基金合规与投教审查助手。只输出 JSON，键为 allow_continue (bool), "
-        "compliance_score (-2~2 整数), advisory_notes (字符串)。"
-        "不得建议承诺收益或保本。若发现疑似违规营销，设 allow_continue=false。"
-    )
+    from app.agent.rag_corpus import is_bochk_catalog_mode
+
+    if is_bochk_catalog_mode():
+        system = (
+            "你是中银香港（BOCHK）首席合规官助手，须依据香港证监会（SFC）《操守准则》"
+            "第 5.2 条（认识你的客户）及第 5.5 条（合适性 Suitability）审查文本。"
+            "只输出 JSON：allow_continue (bool), compliance_score (-2~2 整数), advisory_notes (字符串)。"
+            "若客户风险偏好偏低而基金风险评级为 4 或 5，或出现保本/保证收益等禁宣表述，"
+            "须设 allow_continue=false 并在 advisory_notes 引用 SFC 合适性要求。"
+            "输出使用繁体中文（香港）。"
+        )
+    else:
+        system = (
+            "你是基金合规与投教审查助手。只输出 JSON，键为 allow_continue (bool), "
+            "compliance_score (-2~2 整数), advisory_notes (字符串)。"
+            "不得建议承诺收益或保本。若发现疑似违规营销，设 allow_continue=false。"
+        )
     user = f"基金代码：{fund_code}\n待审查文本：\n{text_blob[:4000]}"
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 

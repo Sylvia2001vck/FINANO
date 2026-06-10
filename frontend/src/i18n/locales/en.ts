@@ -166,6 +166,9 @@ export const en: TranslationDict = {
   "mafb.compliancePass": "Compliance passed",
   "mafb.complianceBlock": "Compliance blocked",
   "mafb.notAdvice": "Past performance is not indicative of future results",
+  "mafb.bochkBadge": "BOCHK demo data layer + SFC compliance engine enabled",
+  "mafb.fundCodePh": "e.g. BM1024 or ISIN HK0000964560",
+  "mafb.fundCodeHint": "BOCHK fund code (BMxxxx) or ISIN; MPF codes MPFxxxx",
 
   "community.title": "Profile & Community",
   "community.profile": "User profile",

@@ -1562,10 +1562,14 @@ def node_asset_allocation(state: MAFBState) -> dict[str, Any]:
 
 
 def node_compliance(state: MAFBState) -> dict[str, Any]:
+    from app.agent.rag_corpus import is_bochk_catalog_mode
+
     reasons = state.get("agent_reasons") or {}
     text_blob = " ".join(reasons.values())
     notes: list[str] = []
     needs_rewrite = False
+    blocked = False
+    blocked_reason = ""
 
     for word in _FORBIDDEN:
         if word in text_blob:
@@ -1578,6 +1582,16 @@ def node_compliance(state: MAFBState) -> dict[str, Any]:
     if fund_risk - user_risk >= 3:
         notes.append("风控警告：基金风险等级显著高于用户画像可承受范围（继续输出，但请谨慎）。")
 
+    if is_bochk_catalog_mode():
+        notes.append("合規引擎：已載入 SFC 操守準則（5.2 KYC / 5.5 合適性）演示知識庫。")
+        if user_risk <= 2 and fund_risk >= 4:
+            blocked = True
+            blocked_reason = (
+                "SFC 合適性錯配：客戶風險檔位偏低（≤2）而基金風險評級 ≥4，"
+                "違反操守準則 5.5 之合理建議原則（演示攔截）。"
+            )
+            notes.append(blocked_reason)
+
     scores = state.get("agent_scores") or {}
     raw_total = sum(scores.values())
     if raw_total <= -4:
@@ -1589,18 +1603,26 @@ def node_compliance(state: MAFBState) -> dict[str, Any]:
         if llm.advisory_notes:
             notes.append(llm.advisory_notes[:500])
         if (not llm.allow_continue) or int(llm.compliance_score) < 0:
-            notes.append("合规提示：大模型建议谨慎发布（当前为非拦截模式，结果继续输出）。")
+            if is_bochk_catalog_mode():
+                blocked = True
+                blocked_reason = blocked_reason or "大模型合規審查：建議攔截輸出（SFC 合適性 / 禁宣詞）。"
+            else:
+                notes.append("合规提示：大模型建议谨慎发布（当前为非拦截模式，结果继续输出）。")
             needs_rewrite = True
 
-    if needs_rewrite:
+    if needs_rewrite and not blocked:
         notes.append("合规编辑：仅对最终单基金分析输出执行术语中性化改写（中间流程保持原文）。")
 
-    notes.append("合规审查：已完成禁宣词检测与风险等级错配检测（非拦截模式）。")
+    if blocked:
+        notes.append("合規攔截：已依香港 SFC 演示規則暫停對外建議性輸出。")
+    else:
+        notes.append("合规审查：已完成禁宣词检测与风险等级错配检测。")
+
     return {
-        "is_compliant": True,
-        "blocked_reason": "",
+        "is_compliant": not blocked,
+        "blocked_reason": blocked_reason,
         "compliance_notes": notes,
-        "compliance_rewrite_needed": needs_rewrite,
+        "compliance_rewrite_needed": needs_rewrite and not blocked,
     }
 
 

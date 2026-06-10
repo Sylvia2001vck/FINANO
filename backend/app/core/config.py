@@ -92,7 +92,7 @@ class Settings(BaseSettings):
 
     # 环境变量 FUND_LIVE_QUOTE_ENABLED=true 时合并天天基金估值 JSONP（失败则仅用静态池）
     fund_live_quote_enabled: bool = False
-    # static=内置演示池；eastmoney_full=启动后首次访问时从天天基金 fundcode_search.js 拉全市场索引（约 1.5 万+）
+    # static=内地演示池；bochk_hk=中银香港演示基金+SFC RAG；eastmoney_full=天天基金全市场索引
     fund_catalog_mode: str = Field(default="static", alias="FUND_CATALOG_MODE")
     # 区间 lsjz-json：热数据直接内存命中（秒回）；超过热 TTL 后尝试增量合并而非整段重翻页
     fund_lsjz_hot_ttl_sec: float = Field(default=180.0, ge=15.0, le=3600.0, alias="FUND_LSJZ_HOT_TTL_SEC")

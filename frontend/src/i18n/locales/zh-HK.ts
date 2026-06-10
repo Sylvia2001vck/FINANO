@@ -175,6 +175,9 @@ export const zhHK: TranslationDict = {
   "mafb.compliancePass": "合規通過",
   "mafb.complianceBlock": "合規攔截",
   "mafb.notAdvice": "歷史不代表未來",
+  "mafb.bochkBadge": "已對接 BOCHK 演示數據層與 SFC 合規審查引擎",
+  "mafb.fundCodePh": "如 BM1024 或 ISIN HK0000964560",
+  "mafb.fundCodeHint": "中銀香港基金編號（BMxxxx）或 ISIN；強積金代碼 MPFxxxx",
 
   // community
   "community.title": "用戶與社區",

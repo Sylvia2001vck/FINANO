@@ -1,0 +1,14 @@
+[Unit]
+Description=Sync FINANO pitch deck static files for Nginx :8082
+After=network-online.target
+Wants=network-online.target
+Before=nginx.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/finano
+ExecStart=/opt/finano/scripts/sync-pitch-deck.sh
+
+[Install]
+WantedBy=multi-user.target

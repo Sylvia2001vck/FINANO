@@ -4,14 +4,112 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      full_deploy:
+        description: "Force full product deploy (Docker + frontend)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: finano-deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      pitch: ${{ steps.filter.outputs.pitch }}
+      app: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            pitch:
+              - 'pitch-deck/**'
+              - 'scripts/sync-pitch-deck.sh'
+              - 'scripts/ensure-pitch-8082.sh'
+              - 'scripts/setup-pitch-deck-nginx.sh'
+              - 'scripts/install-pitch-deck-boot.sh'
+              - 'scripts/finano-pitch-sync.service'
+              - 'scripts/diagnose-vps.sh'
+            app:
+              - 'frontend/**'
+              - 'backend/**'
+              - 'docker-compose*.yml'
+              - 'scripts/vps-deploy.sh'
+              - 'scripts/finano-app.service'
+              - 'scripts/install-vps-boot-all.sh'
+              - '.gitattributes'
+
+  # Fast path (~1–2 min): static HTML only, no Docker / no pip
+  deploy-pitch-deck:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.pitch == 'true' && needs.detect-changes.outputs.app != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
-      # 前端在 GitHub 机器上构建，避免 VPS 跑 vite 时内存打满、SSH 掉线、Actions 超时
+      - name: Sync pitch-deck to VPS (attempt 1)
+        id: pitch_ssh1
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 90s
+          script: |
+            cd /opt/finano
+            git fetch origin main
+            git reset --hard origin/main
+            if command -v git-lfs >/dev/null 2>&1; then
+              git lfs pull
+            fi
+            bash scripts/ensure-pitch-8082.sh
+            echo "Pitch deck only deploy done → :8082"
+
+      - name: Sync pitch-deck to VPS (attempt 2)
+        if: steps.pitch_ssh1.outcome == 'failure'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 90s
+          script: |
+            cd /opt/finano
+            git fetch origin main
+            git reset --hard origin/main
+            if command -v git-lfs >/dev/null 2>&1; then
+              git lfs pull
+            fi
+            bash scripts/ensure-pitch-8082.sh
+            echo "Pitch deck only deploy done → :8082"
+
+  # Slow path (10–30+ min): npm build + Docker backend pip install + compose up
+  deploy-app:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.app == 'true' ||
+      github.event.inputs.full_deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -25,7 +123,20 @@ jobs:
       - name: Pack frontend dist
         run: tar czf frontend-dist.tgz -C frontend dist
 
-      - name: Upload dist tarball to VPS
+      - name: Wait for VPS SSH (avoid deploy during reboot)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 90s
+          script: echo "SSH ready"
+
+      - name: Upload dist tarball to VPS (attempt 1)
+        id: scp1
+        continue-on-error: true
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -33,10 +144,38 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 120s
+          command_timeout: 15m
           source: "frontend-dist.tgz"
           target: "/opt/finano/"
 
-      - name: Deploy via SSH
+      - name: Upload dist tarball to VPS (attempt 2)
+        if: steps.scp1.outcome == 'failure'
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 120s
+          command_timeout: 15m
+          source: "frontend-dist.tgz"
+          target: "/opt/finano/"
+
+      - name: Verify tarball on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            test -s /opt/finano/frontend-dist.tgz || (echo "frontend-dist.tgz missing after scp" && exit 1)
+            ls -lh /opt/finano/frontend-dist.tgz
+
+      - name: Deploy product via SSH (Docker build — slow step)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -50,4 +189,10 @@ jobs:
             cd /opt/finano
             git fetch origin main
             git reset --hard origin/main
+            if command -v git-lfs >/dev/null 2>&1; then
+              git lfs pull
+            fi
             bash scripts/vps-deploy.sh
+            if [ -f scripts/ensure-pitch-8082.sh ]; then
+              bash scripts/ensure-pitch-8082.sh
+            fi

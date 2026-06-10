@@ -1,0 +1,11 @@
+---
+description: FINANO product repo. git push deploys app; pitch deck edits use sibling finano-pitch-deck folder.
+globs:
+alwaysApply: true
+---
+
+# FINANO product repository
+
+- This repo deploys the product (Docker, backend pip install, frontend build) when `frontend/`, `backend/`, or compose files change.
+- Pitch deck static site lives in `pitch-deck/`; prefer editing the flat copy in `../finano-pitch-deck` and running `push-pitch.ps1` there to avoid accidental full Docker rebuilds.
+- Pushing only `pitch-deck/**` changes triggers fast deploy (~1–2 min), not full `deploy-app`.

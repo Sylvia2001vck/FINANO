@@ -45,6 +45,7 @@ import {
   type SimilarFundRow
 } from "../../services/agent";
 import { fetchFundLsjzJson } from "../../services/fundNav";
+import { useT } from "../../hooks/useT";
 
 function pctOrDash(v: unknown): string {
   const n = Number(v);
@@ -373,6 +374,7 @@ function RiskAuxFactorView({ fund }: { fund: Record<string, unknown> | undefined
 }
 
 export default function MAFBPage() {
+  const { t } = useT();
   const [form] = Form.useForm();
   const watchedFundCode = Form.useWatch("fund_code", form) as string | undefined;
   const [loading, setLoading] = useState(false);
@@ -705,11 +707,11 @@ export default function MAFBPage() {
       if (finalData) setReport(finalData);
       setRunLogStatus("success");
       setRunLogCollapsed(true);
-      message.success("MAFB 流水线执行完成");
+      message.success(t("mafb.runDone"));
     } catch (error) {
       setRunLogStatus("failed");
       setRunLogCollapsed(false);
-      message.error(error instanceof Error ? error.message : "执行失败");
+      message.error(error instanceof Error ? error.message : t("mafb.runFailed"));
     } finally {
       setLoading(false);
     }
@@ -717,12 +719,12 @@ export default function MAFBPage() {
 
   const saveCurrentReportAsAsset = async () => {
     if (!report) {
-      message.warning("请先生成 MAFB 报告");
+      message.warning(t("mafb.needReport"));
       return;
     }
     const fundCode = String((report.fund as Record<string, unknown> | undefined)?.code || watchedFundCode || "").trim();
     if (!fundCode) {
-      message.warning("缺少基金代码，无法保存");
+      message.warning(t("mafb.needCode"));
       return;
     }
     setAssetSaving(true);
@@ -733,10 +735,10 @@ export default function MAFBPage() {
         title: `${fundCode} MAFB 报告 ${new Date().toLocaleString()}`,
         final_report: report
       });
-      message.success("已保存到我的资产");
+      message.success(t("mafb.saved"));
       await loadAssetItems();
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "保存失败");
+      message.error(e instanceof Error ? e.message : t("mafb.saveFailed"));
     } finally {
       setAssetSaving(false);
     }
@@ -819,13 +821,10 @@ export default function MAFBPage() {
 
   return (
     <div className="page-stack">
-      <Typography.Title level={3}>MAFB 多智能体控制台</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        输入 6 位基金代码后，中间「查询基金净值」拉取东财历史净值；拉取成功后切换「近一月 / 近三月」等区间会<strong>自动重新拉取</strong>。「运行 MAFB 流水线」与「查询相似 TOP10」互斥需排队；净值查询可与二者并行。
-        勾选「纳入 FBTI」时，画像与资产配置会使用账户已保存的金融人格；不勾选则仅用账户风险偏好档位（不含人格偏好摘要）。
-      </Typography.Paragraph>
+      <Typography.Title level={3}>{t("mafb.title")}</Typography.Title>
+      <Typography.Paragraph type="secondary">{t("mafb.intro")}</Typography.Paragraph>
 
-      <PageCard title="基金代码与运行">
+      <PageCard title={t("mafb.fundAndRun")}>
         {runLogVisible ? (
           runLogStatus === "failed" ? (
             <Alert

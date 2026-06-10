@@ -1,0 +1,57 @@
+--- Slide 1 ---
+中銀香港創新先驅大賽2026計劃書BOCHK Challenge 2026 Proposal
+---
+隊伍名稱 
+Team Name
+---
+隊員名稱 
+Team Members' Names
+---
+方案簡介
+（100字） 
+Proposal Summary
+(100 words)
+---
+FINANO is a Generative AI multi-agent engine for fund suitability in Hong Kong banks. It layers behavioural profiling (FBTI) and MAFB parallel analysis with compliance logging on top of KYC—helping BOCHK reduce mis-selling and document every recommendation. Tech: GenAI + Big Data | Scenarios: Risk Management & Inclusive Finance.FINANO 係面向香港銀行嘅生成式 AI 多智能體引擎，喺 KYC 之上加入投資行為畫像（FBTI）同 MAFB 並行分析，自動記錄合規理據，助中銀香港提升基金適當性、減低違規銷售風險。科技：生成式 AI、大數據；場景：風控、普惠金融。
+---
+參賽組別
+Contestant Category
+---
+【繁體 · HK】學生組｜隊伍 FINANO｜方案聚焦：生成式 AI 多智能體、基金適當性、合規留痕。【粵語口播】各位評審好，我哋係 FINANO。我哋做嘅唔係另一個 chatbot，而係幫銀行喺 KYC 以外，睇清客戶真實投資行為，同時自動記低每個基金建議嘅原因。
+---
+--- Slide 4 ---
+1.1 What is FINANO?
+---
+FINANO is an AI multi-agent engine that upgrades how a bank profiles each client's behavior and recommends suitable funds.
+---
+The gap it fills:
+Banks today match clients to products by their money; 
+FINANO adds the missing layer — matching by behavior.
+---
+* FINANO augments, not replaces, a bank's existing KYC flow. 
+---
+【繁體 · HK】FINANO 係生成式 AI 多智能體引擎，補足「按投資行為配對基金」呢一層；強化而唔取代銀行 KYC。【粵語口播】銀行今日多數按資產同風險等級配產品；FINANO 多加一層——睇你幾時追升、幾時恐慌性賣出，先至叫真正適當。
+---
+--- Slide 5 ---
+1.2 Three Core Engines
+---
+Three engines, one closed loop that knows each client better over time.
+---
+Each loop sharpens the profile; the longer a client uses it, the harder to leave. 
+---
+8-question behavioral profile → 16 personality types, injected into every analysis.
+---
+5 parallel AI agents score a fund; a compliance agent vets the output.
+---
+links every trade to its rationale, turning client history into a switching-cost moat.
+---
+Know the client
+---
+Analyze fit
+---
+Surface Behavior patterns
+---
+Refine the profile
+---
+【繁體 · HK】三引擎閉環：FBTI（8 題行為畫像→16 類型）、MAFB（五路 GenAI 評分+合規）、Trade Replay（交易與筆記雙向回溯）。【粵語口播】三個引擎一齊轉：識客、分析配對、從交易搵行為規律，愈用愈了解個客，亦愈難被競爭對手複製。
+---

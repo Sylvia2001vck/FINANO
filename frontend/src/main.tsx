@@ -1,21 +1,32 @@
 import React from "react";
+
 import ReactDOM from "react-dom/client";
-import { ConfigProvider } from "antd";
+
 import { BrowserRouter } from "react-router-dom";
+
+import { LocaleProvider } from "./components/LocaleProvider";
+
 import App from "./App";
+
 import "./index.css";
 
+
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
+
   <React.StrictMode>
-    <ConfigProvider
-      theme={{
-        token: { colorPrimary: "#2a2a2a", colorLink: "#2a2a2a" },
-        components: { Button: { primaryShadow: "none" } }
-      }}
-    >
+
+    <LocaleProvider>
+
       <BrowserRouter>
+
         <App />
+
       </BrowserRouter>
-    </ConfigProvider>
+
+    </LocaleProvider>
+
   </React.StrictMode>
+
 );
+

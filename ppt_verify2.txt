@@ -1,0 +1,9 @@
+--- Slide 2 ---
+【已選科技主題 Selected Technology】✓ 生成式 AI (Generative AI)✓ 大數據 (Big Data)【已選場景主題 Selected Finance Scenario】✓ 風控 Risk Management✓ 普惠金融 Inclusive Finance
+
+--- Slide 23 ---
+Part 6
+Anticipated Challenges & Solutions
+
+Challenge 1 — Regulatory boundary: FINANO is decision-support, not licensed advice; compliance agent + disclaimers + human-in-the-loop.Challenge 2 — GenAI cost & latency: hybrid model routing, semantic caching, rule fallback.Challenge 3 — Data reliability: snapshot cache + throttled live feeds + graceful degradation.Challenge 4 — Bank integration: start with white-label API / RM console pilot, not full core replacement.
+

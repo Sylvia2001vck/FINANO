@@ -10,6 +10,8 @@ import { ConfigProvider, Layout, Menu, Typography, Button, Space } from "antd";
 import { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FinanoLogo } from "../FinanoLogo";
+import { LocaleSwitcher } from "../LocaleSwitcher";
+import { useT } from "../../hooks/useT";
 import { useUserStore } from "../../store/userStore";
 
 const { Header, Sider, Content } = Layout;
@@ -33,6 +35,7 @@ export function AppLayout({ children }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useUserStore();
+  const { t } = useT();
 
   return (
     <ConfigProvider
@@ -79,7 +82,7 @@ export function AppLayout({ children }: Props) {
               borderBottom: `1px solid ${shell.siderHairline}`
             }}
           >
-            <Link to="/" style={{ lineHeight: 0 }} aria-label="FINANO 首页">
+            <Link to="/" style={{ lineHeight: 0 }} aria-label={t("nav.home")}>
               <FinanoLogo variant="mark" height={58} />
             </Link>
           </div>
@@ -94,11 +97,11 @@ export function AppLayout({ children }: Props) {
                 : location.pathname
             ]}
             items={[
-              { key: "/", icon: <BarChartOutlined />, label: "仪表盘" },
-              { key: "/trade", icon: <FileTextOutlined />, label: "交易与复盘" },
-              { key: "/mafb", icon: <ClusterOutlined />, label: "多智能体控制台" },
-              { key: "/ai-fund-pick", icon: <ThunderboltOutlined />, label: "AI娱乐选基" },
-              { key: "/user-community", icon: <ContactsOutlined />, label: "用户与社区" }
+              { key: "/", icon: <BarChartOutlined />, label: t("nav.dashboard") },
+              { key: "/trade", icon: <FileTextOutlined />, label: t("nav.trade") },
+              { key: "/mafb", icon: <ClusterOutlined />, label: t("nav.mafb") },
+              { key: "/ai-fund-pick", icon: <ThunderboltOutlined />, label: t("nav.aiFundPick") },
+              { key: "/user-community", icon: <ContactsOutlined />, label: t("nav.community") }
             ]}
             onClick={({ key }) => navigate(key)}
           />
@@ -115,10 +118,11 @@ export function AppLayout({ children }: Props) {
               boxShadow: "0 1px 0 rgba(255,255,255,0.35) inset"
             }}
           >
-            <Link to="/" style={{ lineHeight: 0, display: "flex", alignItems: "center" }} aria-label="FINANO 首页">
+            <Link to="/" style={{ lineHeight: 0, display: "flex", alignItems: "center" }} aria-label={t("nav.home")}>
               <FinanoLogo variant="wordmark" height={36} />
             </Link>
             <Space>
+              <LocaleSwitcher />
               <Typography.Text style={{ color: shell.headerText, fontWeight: 500 }}>
                 {currentUser?.username}
               </Typography.Text>
@@ -130,7 +134,7 @@ export function AppLayout({ children }: Props) {
                   navigate("/login");
                 }}
               >
-                退出登录
+                {t("nav.logout")}
               </Button>
             </Space>
           </Header>

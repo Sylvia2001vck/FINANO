@@ -1,0 +1,176 @@
+--- Slide 1 ---
+中銀香港創新先驅大賽2026計劃書BOCHK Challenge 2026 Proposal
+隊伍名稱  | Team Name
+  FINANO
+隊員名稱  | Team Members' Names
+  Team Leader: Pu Tianyi (HKUST)Wang Xinyi | Wang Zhenghao | Zhu Yijin組長：浦天祎｜隊員：王心怡、王正昊、朱艺瑾
+方案簡介 | （100字）  | Proposal Summary | (100 words)
+FINANO is a Generative AI multi-agent engine for bank-side fund suitability. It adds a behavioral layer (FBTI) and MAFB parallel analysis with compliance logging on top of existing KYC—helping BOCHK reduce mis-selling risk and document every recommendation. Tech: GenAI + Big Data | Scenario: FinTech.FINANO 是以生成式 AI 與多智能體打造的銀行端基金適配引擎，在既有 KYC 之上加入行為畫像（FBTI）與合規留痕的 MAFB 分析，協助中銀香港提升適當性管理、降低違規銷售風險。科技主題：生成式 AI、大數據；場景主題：金融科技。
+參賽組別 | Contestant Category
+  學生組 Student Stream
+
+--- Slide 2 ---
+  其他應用科技 (請在此列出，例如VR/AR) | Other application technologies (Please list below, E.g. VR/AR)
+  比賽主題：科技（至少選其一） | Theme：Technology (Choose at least one)
+      生成式AI | Generative  | Artificial Intelligence
+      區塊鏈 | Blockchain
+      大數據 | Big Data
+  比賽場景：金融（至少選其一） | Scenario: Finance (Choose at least one)
+      普惠金融 | Inclusive Finance
+      支付 | Payment
+      風控 | Risk Management
+      環境、 | 社會和管治 | ESG
+      跨境 (內地、東南亞及其他海外地區) | Cross Border (Mainland, Southeast Asia and Other Overseas Regions
+科技主題 Tech Theme生成式 AI (Generative AI)  |  大數據 (Big Data)場景主題 Scenario Theme金融科技 (FinTech)
+
+--- Slide 3 ---
+Part 1 | Proposal Overview 
+
+--- Slide 4 ---
+1.1 What is FINANO?
+FINANO is a Generative AI multi-agent engine that upgrades how a bank profiles each client's behavior and recommends suitable funds.
+The gap it fills: | Banks today match clients to products by their money;  | FINANO adds the missing layer — matching by behavior.
+* FINANO augments, not replaces, a bank's existing KYC flow.* Aligns with BOCHK Challenge 2026: Innovation Leads the Future.
+
+--- Slide 5 ---
+1.2 Three Core Engines
+Three engines, one closed loop that knows each client better over time.
+Each loop sharpens the profile; the longer a client uses it, the harder to leave. 
+FBTI: 8-question behavioral profile → 16 types, injected into every analysis.
+MAFB: 5 parallel Generative AI agents score a fund; compliance agent vets output.
+Trade Replay: links every trade to its rationale, building a behavioral memory moat.
+Know the client
+Analyze fit
+Surface Behavior patterns
+Refine the profile
+
+--- Slide 6 ---
+1.3 Empowering BOCHK as an Innovation Pioneer
+Today, suitability is assessed by money. With FINANO, it‘s also assessed by behavior, and every recommendation is auto-documented.
+TODAY
+WITH FINANO (GenAI)
+Static, money-based KYC, rarely updated | Mechanical risk-tier matching → mis-selling & complaints | SFC pressure on suitability
+GenAI-powered behavioral layer running in parallel with KYCSuitability-first matching, not return-firstAuto-logged rationale → satisfies "record each recommendation's reason"
+
+--- Slide 7 ---
+Part 2 | Target Market & Customer Groups
+
+--- Slide 8 ---
+2.1 Who Pays & Why Banks
+ Our primary customer is the bank — BOCHK is the ideal first partner.
+The Need
+Why Banks
+Why BOCHK first
+HK banks must document that every fund recommendation is suitable, yet still rely on static risk questionnaires  | → a behavioral blind spot.
+Banks carry the compliance burden, own the distribution.  | The value of behavioral profiling is highest inside the bank.
+The leading GBA retail bank, active in fintech. | This competition is itself step one of a pilot.
+* We sell to banks (B2B). Retail users are our validation layer.
+
+--- Slide 9 ---
+2.2 Market Size & Opportunity
+A large, fast-growing value pool — reached through a handful of buyers.
+HKMA & SFC are actively streamlining suitability assessment, and AI is now banks' top client investment theme.
+TAM
+SAM
+SOM
+HKD 35.1T
+~ 20 banks
+1 → 2 - 3
+HK asset & wealth AUM, 2024 (+13%)
+Retail banks distributing funds (of 149 licensed)
+BOCHK pilot Y1 → GBA banks by Y3
+Retail-bank investment-product sales (doubled in 2022–2024):  | HK$819B → HK$1.77T
+* Sources: AUM & net inflows — SFC, Asset & Wealth Management Activities Survey 2024 (Jul 2025)｜Retail-bank fund sales — HKMA (Aug 2025)｜Licensed-bank count — HKMA Register of Authorized Institutions (Aug 2025)｜~20 retail banks — team estimate
+
+--- Slide 10 ---
+2.3 Competitive Landscape & Differentiation
+No incumbent combines behavioral profiling + Generative AI multi-agent analysis + trade memory — inside the bank's compliance perimeter.
+Our moat is the behavioral data that compounds with every client interaction.
+
+--- Slide 11 ---
+Part 3 | Business Issues / Customers' Pain Points
+
+--- Slide 12 ---
+3.1 Three Structural Pain Points
+Banks match clients by their money — and stay blind to how clients actually behave.
+A risk tier is not a behavioral profile — and SFC says mechanical matching alone isn't enough.
+Mis-selling, complaints & regulatory exposure
+Behavioral blind spot
+Static, money-based KYC
+A risk questionnaire taken once, rarely updated; captures wealth & risk tier, not behavior.
+Banks can't see a client's panic-selling, FOMO-buying, or over-trading tendencies.
+Products that exceed real suitability led to complaints, remediation, and fines.
+
+--- Slide 13 ---
+3.2 The Cost Is Real & Rising
+The behavioral gap isn't abstract — it shows up as rising volume, more clients, and real fines.
+Every recommendation must be justified and recorded — and the volume is doubling.
+4.3M
+2x
+HK$10.85M
+Retail-bank investment-product sales doubled (2022-2024). 
+Securities, futures & asset-management client accounts (up from 3.71M). 
+SFC fine on a bank for product due-diligence & record-keeping failures (Dec 2025).
+* Sources: SFC & HKMA joint press release, 11 Dec 2025 — EFG Bank AG fined HK$10.85M for product due-diligence, record-keeping & late-reporting failures (2015–2020).
+
+--- Slide 14 ---
+3.3 This is Where FINANO Fits
+Each pain point maps to one FINANO capability already shown in Section 1.
+FINANO runs alongside KYC — it closes the behavioral gap the questionnaire structurally cannot.Live prototype: React + FastAPI + LangGraph MAFB console (Docker-deployed demo).
+
+--- Slide 15 ---
+Part 4 | Expected Result / Revenue Stream Forecast
+
+--- Slide 16 ---
+4.1 Three Ways to Sell to Bank
+We don't sell the website. We sell it three ways — matched to how banks actually buy.
+For BOCHK, we propose the Pilot — and this competition is step one.
+
+--- Slide 17 ---
+4.2 Pricing & Revenue Forecast
+We don't sell the website. We sell it three ways — matched to how banks actually buy.
+Every bank we add is high-margin recurring revenue — the cost to serve barely moves.
+Pricing Levers
+Simplified Forecast (illustrative)
+Per-seat — annual license per RM / advisor using the MAFB console  | Per-usage — per FBTI assessment or per MAFB analysis (API)  | Annual license — flat platform fee + setup (white-label)  | Floor rule — every price sits above the per-analysis compute cost (detail in §5)
+Formula: ARR = # banks × avg ACV  | Y1: 1 (BOCHK pilot)  |       → Y2: 3 → Y3: 4 banks | Illustrative ACV ≈ US$150K  |       → Y3 ARR ≈ US$0.6M  | All figures illustrative — to be validated
+* Figures illustrative; ACV and bank-count are team assumptions to be validated against comparable wealthtech vendor deals.
+
+--- Slide 18 ---
+4.3 The Pilot: What We'll Prove
+A 3-month A/B pilot with BOCHK — FINANO arm vs. a traditional-KYC control group.
+Success = measurable lift in suitability and compliance efficiency — proof we can scale to other GBA banks.Why we are here: Winning BOCHK Challenge 2026 is Step 1 to launch this PoC with BOCHK and unlock the competition's collaboration / internship pathway.
+
+--- Slide 19 ---
+Part 5 | Cost and Benefit Analysis
+
+--- Slide 20 ---
+5.1 What the Bank Gains
+FINANO pays for itself through four bank-side gains — three save cost, one grows revenue.
+Three of these cut cost, one grows the book — the value to the bank is concrete, not cosmetic.
+
+--- Slide 21 ---
+5.2 Our Cost Structure & the Pricing Floor
+Cost Structure
+The Pricing Floor
+R&D — engineering team (largely fixed, already built)Compute — per MAFB analysis: 5 GenAI agents + compliance review (optimized via API routing & local LLM fallback)Data APIs — fund NAV / market data feedsOps & hosting — servers, vector DB, maintenance
+Cost per MAFB analysis ≈ HK$[ ___ ]  | Rule: price per analysis > compute cost per analysis | Levers that lower the floor: hybrid model routing, semantic caching (avoids re-running duplicate queries)
+* Compute cost per analysis to be supplied by engineering team (based on actual model-call logs).
+The compute cost per MAFB analysis:
+
+--- Slide 22 ---
+5.3 Break-Even Logic: Counted in Banks
+Fixed Cost / Year
+Because our costs are mostly fixed, break-even depends on one thing — how many banks we sign.
+Contribution / Bank
+Break-Even
+R&D + ops
+ACV − compute-per-bank
+banks needed
+HK$ xxxxxx
+HK$ xxxxxx
+Xxx banks
+
+--- Slide 23 ---
+Part 6Anticipated Challenges & Solutions
+

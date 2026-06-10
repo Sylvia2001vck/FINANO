@@ -11,6 +11,7 @@ import {
   type FbtiIntentPreview,
   type FbtiSelectResponse
 } from "../../services/fbti";
+import { useT } from "../../hooks/useT";
 
 const WX_COLOR: Record<string, string> = {
   金: "gold",
@@ -32,6 +33,7 @@ function WuxingBadge({ text }: { text: string }) {
 
 /** 独立模块：AI娱乐选基（与 MAFB、用户与社区解耦） */
 export default function AiFundPickPage() {
+  const { t } = useT();
   const [loading, setLoading] = useState(true);
   const [hasFbti, setHasFbti] = useState(false);
   const [hasBirthProfile, setHasBirthProfile] = useState(false);
@@ -77,7 +79,7 @@ export default function AiFundPickPage() {
     try {
       const p = await postFbtiAiIntentPreview(buildPayload());
       setPreview(p);
-      message.success("已生成意图与策略预览");
+      message.success(t("aiFundPick.previewOk"));
     } catch (e) {
       message.error(e instanceof Error ? e.message : "预览生成失败");
     } finally {
@@ -119,7 +121,7 @@ export default function AiFundPickPage() {
 
   return (
     <div className="page-stack">
-      <Typography.Title level={3}>AI娱乐选基</Typography.Title>
+      <Typography.Title level={3}>{t("aiFundPick.title")}</Typography.Title>
       <Typography.Paragraph type="secondary">
         一键流程：自动读取用户档案中的生日/出生时段推算八字，再做今日时势解读 → 金融意图翻译 → 策略关联 → 基金终筛；
         若已完成 FBTI，会自动叠加人格画像。

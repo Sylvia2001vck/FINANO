@@ -16,6 +16,7 @@ import AiFundPickPage from "./pages/AiFundPick";
 import UserCommunityPage from "./pages/UserCommunity";
 import { postWarmFundCatalog } from "./services/agent";
 import { fetchMe } from "./services/user";
+import { useT } from "./hooks/useT";
 import { useAppStore } from "./store/appStore";
 import { useUserStore } from "./store/userStore";
 
@@ -28,6 +29,7 @@ function ProtectedLayout({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
+  const { t } = useT();
   const token = useUserStore((state) => state.token);
   const setAuth = useUserStore((state) => state.setAuth);
   const logout = useUserStore((state) => state.logout);
@@ -52,7 +54,7 @@ export default function App() {
 
   return (
     <AntdApp>
-      <Spin spinning={apiLoading} fullscreen tip="加载中…" />
+      <Spin spinning={apiLoading} fullscreen tip={t("common.loading")} />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedLayout><DashboardPage /></ProtectedLayout>} />

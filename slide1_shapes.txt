@@ -1,0 +1,26 @@
+shape[0] type=PICTURE (13) name=Picture 2
+
+shape[1] type=PLACEHOLDER (14) name=Title 1
+  text='中銀香港創新先驅大賽2026計劃書\x0bBOCHK Challenge 2026 Proposal'
+
+shape[2] type=TEXT_BOX (17) name=Subtitle 2
+  text='隊伍名稱 \nTeam Name'
+
+shape[3] type=GROUP (6) name=Rectangle: Rounded Corners 9
+
+shape[4] type=TEXT_BOX (17) name=Subtitle 2
+  text="隊員名稱 \nTeam Members' Names"
+
+shape[5] type=GROUP (6) name=Rectangle: Rounded Corners 12
+
+shape[6] type=TEXT_BOX (17) name=Subtitle 2
+  text='方案簡介\n（100字） \nProposal Summary\n(100 words)'
+
+shape[7] type=AUTO_SHAPE (1) name=Rounded Rectangle
+  text=''
+
+shape[8] type=TEXT_BOX (17) name=Subtitle 2
+  text='參賽組別\nContestant Category'
+
+shape[9] type=GROUP (6) name=Rectangle: Rounded Corners 9
+

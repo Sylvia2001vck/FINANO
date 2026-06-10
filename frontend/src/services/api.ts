@@ -1,7 +1,9 @@
 import axios from "axios";
 import type { InternalAxiosRequestConfig } from "axios";
 import { message } from "antd";
+import { translate } from "../i18n";
 import { useAppStore } from "../store/appStore";
+import { useLocaleStore } from "../store/localeStore";
 import { useUserStore } from "../store/userStore";
 
 function skipGlobalLoading(config: InternalAxiosRequestConfig): boolean {
@@ -65,12 +67,14 @@ api.interceptors.response.use(
     }).catch(() => {});
     // #endregion
     const isAuthEntry = url.includes("/auth/login") || url.includes("/auth/register");
+    const locale = useLocaleStore.getState().locale;
     if (status === 401 && !isAuthEntry) {
       useUserStore.getState().logout();
-      message.warning("登录已过期，请重新登录");
+      message.warning(translate(locale, "login.expired"));
       window.location.assign("/login");
     }
-    const msg = error?.response?.data?.message || error?.message || "请求失败";
-    return Promise.reject(new Error(typeof msg === "string" ? msg : "请求失败"));
+    const fallback = translate(locale, "common.requestFailed");
+    const msg = error?.response?.data?.message || error?.message || fallback;
+    return Promise.reject(new Error(typeof msg === "string" ? msg : fallback));
   }
 );

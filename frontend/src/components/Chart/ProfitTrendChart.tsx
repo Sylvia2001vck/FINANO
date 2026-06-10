@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
+import { useT } from "../../hooks/useT";
 import { TradeDailyPnlPoint } from "../../types/trade";
 
 interface Props {
@@ -8,28 +9,31 @@ interface Props {
 
 export function ProfitTrendChart({ dailyPnlSeries }: Props) {
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const { t } = useT();
 
   useEffect(() => {
     if (!chartRef.current) return;
     const chart = echarts.init(chartRef.current);
     const sortedSeries = [...dailyPnlSeries].sort((a, b) => a.date.localeCompare(b.date));
+    const cumulative = t("chart.cumulativePnl");
+    const daily = t("chart.dailyPnl");
     chart.setOption({
       tooltip: { trigger: "axis" as const },
       xAxis: {
         type: "category",
         data: sortedSeries.map((item) => item.date)
       },
-      yAxis: [{ type: "value", name: "累计盈亏" }, { type: "value", name: "当日盈亏" }],
+      yAxis: [{ type: "value", name: cumulative }, { type: "value", name: daily }],
       series: [
         {
-          name: "累计盈亏",
+          name: cumulative,
           type: "line",
           smooth: true,
           areaStyle: {},
           data: sortedSeries.map((item) => item.cumulative_pnl)
         },
         {
-          name: "当日盈亏",
+          name: daily,
           type: "bar",
           yAxisIndex: 1,
           opacity: 0.6,
@@ -43,7 +47,7 @@ export function ProfitTrendChart({ dailyPnlSeries }: Props) {
       window.removeEventListener("resize", onResize);
       chart.dispose();
     };
-  }, [dailyPnlSeries]);
+  }, [dailyPnlSeries, t]);
 
   return <div ref={chartRef} style={{ height: 320 }} />;
 }

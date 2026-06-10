@@ -1,0 +1,16 @@
+shape[0] type=PICTURE (13)
+shape[1] type=AUTO_SHAPE (1)
+''
+shape[2] type=GROUP (6)
+  group[0] ''
+  group[1] '其他應用科技 (請在此列出，例如VR/AR)\nOther application technologies (Please list below, E.g. VR/AR)'
+shape[3] type=GROUP (6)
+  group[0] '比賽主題：科技（至少選其一）\nTheme：Technology (Choose at least one)'
+shape[4] type=GROUP (6)
+  group[0] '比賽場景：金融（至少選其一）\nScenario: Finance (Choose at least one)'
+shape[5] type=TEXT_BOX (17)
+'科技主題 Tech Theme\x0b生成式 AI (Generative AI)  |  大數據 (Big Data)\x0b\x0b場景主題 Scenario Theme\x0b金融科技 (FinTech)'
+shape[6] type=AUTO_SHAPE (1)
+''
+shape[7] type=PICTURE (13)
+shape[8] type=PICTURE (13)

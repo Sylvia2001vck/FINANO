@@ -1,21 +1,11 @@
 import { Button, Progress, Radio, Space, Spin, Typography, message } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageCard } from "../../components/UI/PageCard";
+import { useT } from "../../hooks/useT";
 import { getFbtiProfile, postFbtiTest } from "../../services/fbti";
 import { useFbtiStore } from "../../store/fbtiStore";
 import { useUserStore } from "../../store/userStore";
-
-const QUESTIONS: { q: string; a: string; b: string }[] = [
-  { q: "你的投资风险偏好？", a: "本金安全第一（R）", b: "追求高收益，接受波动（S）" },
-  { q: "你的持仓周期？", a: "1 年以上长期持有（L）", b: "1 个月内短线操作（T）" },
-  { q: "你如何做决策？", a: "看数据 / 净值 / 回撤（D）", b: "凭直觉 / 热点 / 新闻（F）" },
-  { q: "你的仓位习惯？", a: "重仓集中 3 只内（C）", b: "分散持仓 10 只以上（A）" },
-  { q: "下跌时你会？", a: "加仓补仓（R）", b: "止损卖出（S）" },
-  { q: "收益目标？", a: "年化 10% 稳健（L）", b: "年化 30%+ 暴利（T）" },
-  { q: "选基优先看？", a: "历史业绩数据（D）", b: "基金经理口碑（F）" },
-  { q: "资产配置？", a: "单一赛道重仓（C）", b: "股债均衡分散（A）" }
-];
 
 export default function FbtiTestPage() {
   const navigate = useNavigate();
@@ -24,9 +14,24 @@ export default function FbtiTestPage() {
   const setAuth = useUserStore((s) => s.setAuth);
   const token = useUserStore((s) => s.token);
   const setFbti = useFbtiStore((s) => s.setLast);
+  const { t } = useT();
   const [checkingSaved, setCheckingSaved] = useState(!retake);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<(string | null)[]>(Array(8).fill(null));
+
+  const questions = useMemo(
+    () => [
+      { q: t("fbti.q1"), a: t("fbti.q1a"), b: t("fbti.q1b") },
+      { q: t("fbti.q2"), a: t("fbti.q2a"), b: t("fbti.q2b") },
+      { q: t("fbti.q3"), a: t("fbti.q3a"), b: t("fbti.q3b") },
+      { q: t("fbti.q4"), a: t("fbti.q4a"), b: t("fbti.q4b") },
+      { q: t("fbti.q5"), a: t("fbti.q5a"), b: t("fbti.q5b") },
+      { q: t("fbti.q6"), a: t("fbti.q6a"), b: t("fbti.q6b") },
+      { q: t("fbti.q7"), a: t("fbti.q7a"), b: t("fbti.q7b") },
+      { q: t("fbti.q8"), a: t("fbti.q8a"), b: t("fbti.q8b") }
+    ],
+    [t]
+  );
 
   useEffect(() => {
     if (retake) {
@@ -43,14 +48,14 @@ export default function FbtiTestPage() {
       .finally(() => setCheckingSaved(false));
   }, [retake, navigate]);
 
-  const pct = Math.round(((step + 1) / QUESTIONS.length) * 100);
+  const pct = Math.round(((step + 1) / questions.length) * 100);
 
   const onNext = () => {
     if (!answers[step]) {
-      message.warning("请选择一个选项");
+      message.warning(t("fbti.pickOne"));
       return;
     }
-    if (step < QUESTIONS.length - 1) {
+    if (step < questions.length - 1) {
       setStep(step + 1);
     } else {
       void submit();
@@ -59,7 +64,7 @@ export default function FbtiTestPage() {
 
   const submit = async () => {
     if (answers.some((x) => x !== "A" && x !== "B")) {
-      message.warning("请完成全部题目");
+      message.warning(t("fbti.completeAll"));
       return;
     }
     const ans = answers as string[];
@@ -69,26 +74,24 @@ export default function FbtiTestPage() {
       if (token && data.user) {
         setAuth({ access_token: token, token_type: "bearer", user: data.user });
       }
-      message.success("测试完成");
+      message.success(t("fbti.done"));
       navigate("/user-community#fbti", { replace: true });
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "提交失败");
+      message.error(e instanceof Error ? e.message : t("fbti.submitFailed"));
     }
   };
 
   if (checkingSaved) {
-    return <Spin tip="加载中…" />;
+    return <Spin tip={t("common.loading")} />;
   }
 
   return (
     <div className="page-stack">
-      <Typography.Title level={3}>FBTI 金融人格测试</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        共 8 题，单选，约 1 分钟完成。结果用于行为金融学演示画像，不构成投资建议。
-      </Typography.Paragraph>
+      <Typography.Title level={3}>{t("fbti.title")}</Typography.Title>
+      <Typography.Paragraph type="secondary">{t("fbti.intro")}</Typography.Paragraph>
       <Progress percent={pct} size="small" style={{ maxWidth: 480 }} />
-      <PageCard title={`第 ${step + 1} / ${QUESTIONS.length} 题`}>
-        <Typography.Paragraph strong>{QUESTIONS[step].q}</Typography.Paragraph>
+      <PageCard title={t("fbti.questionProgress", { current: step + 1, total: questions.length })}>
+        <Typography.Paragraph strong>{questions[step].q}</Typography.Paragraph>
         <Radio.Group
           value={answers[step]}
           onChange={(e) => {
@@ -98,15 +101,15 @@ export default function FbtiTestPage() {
           }}
         >
           <Space direction="vertical">
-            <Radio value="A">{QUESTIONS[step].a}</Radio>
-            <Radio value="B">{QUESTIONS[step].b}</Radio>
+            <Radio value="A">{questions[step].a}</Radio>
+            <Radio value="B">{questions[step].b}</Radio>
           </Space>
         </Radio.Group>
         <div style={{ marginTop: 24 }}>
           <Space>
-            {step > 0 ? <Button onClick={() => setStep(step - 1)}>上一题</Button> : null}
+            {step > 0 ? <Button onClick={() => setStep(step - 1)}>{t("fbti.prev")}</Button> : null}
             <Button type="primary" onClick={onNext}>
-              {step === QUESTIONS.length - 1 ? "提交" : "下一题"}
+              {step === questions.length - 1 ? t("common.submit") : t("fbti.next")}
             </Button>
           </Space>
         </div>

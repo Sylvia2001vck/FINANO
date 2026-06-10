@@ -1,0 +1,8 @@
+[1] PLACEHOLDER (14) '中銀香港創新先驅大賽2026計劃書\x0bBOCHK Challenge 2026 Proposal'
+[2] TEXT_BOX (17) '隊伍名稱 \nTeam Name'
+[3][1] TEXT_BOX (17) 'FINANO'
+[4] TEXT_BOX (17) "隊員名稱 \nTeam Members' Names"
+[5][1] TEXT_BOX (17) '組長: \nTeam Leader:\n\n隊員1:\nTeam Member 1:\n\n隊員2:\nTeam Member 2:'
+[6] TEXT_BOX (17) '方案簡介\n（100字） \nProposal Summary\n(100 words)'
+[8] TEXT_BOX (17) '參賽組別\nContestant Category'
+[9][1] TEXT_BOX (17) '學生組\nStudent Stream'

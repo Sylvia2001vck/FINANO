@@ -1,6 +1,7 @@
 import { Empty, Spin } from "antd";
 import * as echarts from "echarts";
 import { useEffect, useMemo, useRef } from "react";
+import { useT } from "../../hooks/useT";
 import { TradeCurve } from "../../types/trade";
 
 interface Props {
@@ -9,15 +10,17 @@ interface Props {
   height?: number;
 }
 
-function formatAction(action: "buy" | "sell") {
-  return action === "buy" ? "买入" : "卖出";
-}
-
 export function TradeCurveMarkersChart({ curve, loading = false, height = 260 }: Props) {
   const chartRef = useRef<HTMLDivElement | null>(null);
+  const { t } = useT();
 
   const option = useMemo<echarts.EChartsOption | null>(() => {
     if (!curve || !curve.points.length) return null;
+    const navLabel = t("chart.nav");
+    const buyLabel = t("chart.buy");
+    const sellLabel = t("chart.sell");
+    const buyPoint = t("chart.buyPoint");
+    const sellPoint = t("chart.sellPoint");
     const lineData = curve.points.map((p) => [p.date, p.nav]);
     const buyData = curve.markers
       .filter((m) => m.action === "buy" && typeof m.nav === "number")
@@ -41,11 +44,12 @@ export function TradeCurveMarkersChart({ curve, loading = false, height = 260 }:
           const arr = Array.isArray(params) ? params : [params];
           for (const item of arr) {
             if (item?.seriesType === "line") {
-              lines.push(`${item.axisValueLabel}<br/>净值：${Number(item.data?.[1] ?? 0).toFixed(4)}`);
+              lines.push(`${item.axisValueLabel}<br/>${navLabel}：${Number(item.data?.[1] ?? 0).toFixed(4)}`);
             } else if (item?.data?.marker) {
               const m = item.data.marker;
+              const action = m.action === "buy" ? buyLabel : sellLabel;
               lines.push(
-                `${formatAction(m.action)} #${m.trade_id}<br/>数量：${m.quantity}<br/>金额：${
+                `${action} #${m.trade_id}<br/>Qty：${m.quantity}<br/>Amt：${
                   typeof m.amount === "number" ? m.amount.toFixed(2) : "-"
                 }`
               );
@@ -57,17 +61,17 @@ export function TradeCurveMarkersChart({ curve, loading = false, height = 260 }:
       grid: { left: 50, right: 18, top: 18, bottom: 36 },
       xAxis: { type: "time" },
       yAxis: { type: "value", scale: true },
-      legend: { data: ["净值", "买入点", "卖出点"] },
+      legend: { data: [navLabel, buyPoint, sellPoint] },
       series: [
         {
-          name: "净值",
+          name: navLabel,
           type: "line",
           showSymbol: false,
           lineStyle: { width: 1.8 },
           data: lineData
         },
         {
-          name: "买入点",
+          name: buyPoint,
           type: "scatter",
           symbol: "triangle",
           symbolSize: 12,
@@ -75,16 +79,16 @@ export function TradeCurveMarkersChart({ curve, loading = false, height = 260 }:
           data: buyData
         },
         {
-          name: "卖出点",
+          name: sellPoint,
           type: "scatter",
           symbol: "diamond",
-          symbolSize: 11,
+          symbolSize: 12,
           itemStyle: { color: "#1677ff" },
           data: sellData
         }
       ]
     };
-  }, [curve]);
+  }, [curve, t]);
 
   useEffect(() => {
     if (!chartRef.current || !option) return;
@@ -98,16 +102,7 @@ export function TradeCurveMarkersChart({ curve, loading = false, height = 260 }:
     };
   }, [option]);
 
-  if (!curve?.points.length) {
-    return (
-      <Spin spinning={loading}>
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无净值曲线数据" />
-      </Spin>
-    );
-  }
-  return (
-    <Spin spinning={loading}>
-      <div ref={chartRef} style={{ height }} />
-    </Spin>
-  );
+  if (loading) return <Spin />;
+  if (!option) return <Empty description={t("chart.noNavData")} />;
+  return <div ref={chartRef} style={{ height }} />;
 }

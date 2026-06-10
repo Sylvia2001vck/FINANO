@@ -1,6 +1,7 @@
 import { ScanOutlined } from "@ant-design/icons";
 import { Button, Upload, message } from "antd";
 import type { UploadProps } from "antd";
+import { useT } from "../hooks/useT";
 import { ocrFundCode } from "../services/agent";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
 
 /** 在基金代码输入旁：拍照/截图识图，优先 6 位代码，否则按名称在全库反查 */
 export function FundCodeOcrButton({ onResolved, disabled }: Props) {
+  const { t } = useT();
+
   const beforeUpload: UploadProps["beforeUpload"] = async (file) => {
     try {
       const data = await ocrFundCode(file);
@@ -18,10 +21,10 @@ export function FundCodeOcrButton({ onResolved, disabled }: Props) {
         onResolved(p, data.hint);
         message.success(data.hint);
       } else {
-        message.warning(data.hint || "未识别到基金代码");
+        message.warning(data.hint || t("ocr.notFound"));
       }
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "识图失败");
+      message.error(e instanceof Error ? e.message : t("ocr.failed"));
     }
     return false;
   };
@@ -32,9 +35,9 @@ export function FundCodeOcrButton({ onResolved, disabled }: Props) {
         type="text"
         size="small"
         icon={<ScanOutlined />}
-        aria-label="扫描识图识别基金代码"
+        aria-label={t("ocr.scanFund")}
         disabled={disabled}
-        title="上传截图识别基金代码或名称"
+        title={t("ocr.uploadHint")}
       />
     </Upload>
   );

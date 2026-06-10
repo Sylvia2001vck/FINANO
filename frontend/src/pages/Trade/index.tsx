@@ -45,6 +45,7 @@ import {
 } from "../../services/trade";
 import type { SecuritySearchHit } from "../../services/trade";
 import { AiAnalysisResult, NoteItem, ReplayAnalysisResult, Trade, TradeCurve, TradeStats } from "../../types/trade";
+import { useT } from "../../hooks/useT";
 import { currency } from "../../utils/format";
 
 const NOTE_VIEW_KEY = "finano_trade_hub_note_view";
@@ -90,6 +91,7 @@ function buildDraftNoteFromAnalysis(trade: Trade, ai: AiAnalysisResult) {
 }
 
 export default function TradePage() {
+  const { t } = useT();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [stats, setStats] = useState<TradeStats | null>(null);
   const [notes, setNotes] = useState<NoteItem[]>([]);
@@ -255,7 +257,7 @@ export default function TradePage() {
 
   const runAi = async () => {
     if (!selectedTradeIds.length) {
-      message.warning("请先选中至少一笔交易");
+      message.warning(t("trade.selectOneTrade"));
       return;
     }
     setAiLoading(true);
@@ -273,13 +275,13 @@ export default function TradePage() {
       if (ids.length === 1) {
         const replay = await analyzeReplayByTrade(ids[0]);
         setReplayResult(replay);
-        message.success("单笔 AI 分析完成（已自动关联历史相似记录）");
+        message.success(t("trade.aiSingleDone"));
       } else {
         setReplayResult(null);
-        message.success(`已完成 ${ids.length} 笔选中交易分析（未选中交易不参与）`);
+        message.success(t("trade.aiBatchDone", { count: ids.length }));
       }
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "分析失败");
+      message.error(e instanceof Error ? e.message : t("trade.aiFailed"));
     } finally {
       setAiLoading(false);
       setReplayLoading(false);
@@ -290,31 +292,31 @@ export default function TradePage() {
     <div className="page-stack">
       <Space className="page-actions" wrap>
         <Button type="primary" onClick={() => setOpenTradeModal(true)}>
-          新增交易
+          {t("trade.addTrade")}
         </Button>
         <Upload
           showUploadList={false}
           beforeUpload={async (file) => {
             await importTradeByOcr(file);
-            message.success("OCR 导入成功");
+            message.success(t("trade.ocrImportOk"));
             await loadAll();
             return false;
           }}
         >
-          <Button icon={<UploadOutlined />}>导入交割单</Button>
+          <Button icon={<UploadOutlined />}>{t("trade.importOcr")}</Button>
         </Upload>
       </Space>
 
-      <PageCard title={`交易记录（累计收益 ${currency(stats?.total_profit || 0)}）`}>
+      <PageCard title={t("trade.recordsTitle", { profit: currency(stats?.total_profit || 0) })}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          可多选/全选交易后执行 AI 分析；未选中的交易不会参与分析。
+          {t("trade.multiSelectHint")}
         </Typography.Paragraph>
         <Space style={{ marginBottom: 12 }}>
-          <Button size="small" onClick={() => setSelectedTradeIds(trades.map((t) => t.id))}>
-            全选
+          <Button size="small" onClick={() => setSelectedTradeIds(trades.map((tr) => tr.id))}>
+            {t("trade.selectAll")}
           </Button>
           <Button size="small" onClick={() => setSelectedTradeIds([])}>
-            清空选择
+            {t("trade.clearSelection")}
           </Button>
         </Space>
         <Table<Trade>
@@ -333,9 +335,7 @@ export default function TradePage() {
             },
             expandedRowRender: (record) => (
               <div>
-                <Typography.Text type="secondary">
-                  同基金全历史买卖节点：红色三角=买入，蓝色菱形=卖出。可同时看到此前与当前交易位置。
-                </Typography.Text>
+                <Typography.Text type="secondary">{t("trade.curveHint")}</Typography.Text>
                 <TradeCurveMarkersChart
                   curve={curveMap[record.symbol]}
                   loading={Boolean(curveLoadingMap[record.symbol])}
@@ -359,11 +359,11 @@ export default function TradePage() {
           })}
           columns={[
             {
-              title: "买卖区间",
+              title: t("trade.period"),
               width: 168,
               render: (_: unknown, r: Trade) => {
                 if (r.buy_date) {
-                  const tail = r.sell_date ? r.sell_date : "持仓";
+                  const tail = r.sell_date ? r.sell_date : t("common.holding");
                   return (
                     <Typography.Text>
                       {r.buy_date} → {tail}
@@ -373,20 +373,20 @@ export default function TradePage() {
                 return r.trade_date;
               }
             },
-            { title: "代码", dataIndex: "symbol", width: 88 },
-            { title: "名称", dataIndex: "name", ellipsis: true },
-            { title: "方向", dataIndex: "direction", width: 72 },
-            { title: "买入额", dataIndex: "amount", width: 100, render: (v: number) => currency(v) },
-            { title: "盈亏", dataIndex: "profit", width: 100, render: (v: number) => currency(v) },
-            { title: "平台", dataIndex: "platform", width: 96, ellipsis: true },
+            { title: t("common.code"), dataIndex: "symbol", width: 88 },
+            { title: t("common.name"), dataIndex: "name", ellipsis: true },
+            { title: t("trade.direction"), dataIndex: "direction", width: 72 },
+            { title: t("trade.buyAmount"), dataIndex: "amount", width: 100, render: (v: number) => currency(v) },
+            { title: t("trade.pnl"), dataIndex: "profit", width: 100, render: (v: number) => currency(v) },
+            { title: t("trade.platform"), dataIndex: "platform", width: 96, ellipsis: true },
             {
-              title: "操作",
+              title: t("common.action"),
               width: 90,
               render: (_: unknown, r: Trade) => (
                 <Popconfirm
-                  title="确认删除这条交易记录？"
-                  okText="删除"
-                  cancelText="取消"
+                  title={t("trade.confirmDelete")}
+                  okText={t("common.delete")}
+                  cancelText={t("common.cancel")}
                   okButtonProps={{ danger: true }}
                   onConfirm={async () => {
                     await deleteTrade(r.id);
@@ -397,12 +397,12 @@ export default function TradePage() {
                       delete next[r.id];
                       return next;
                     });
-                    message.success("交易记录已删除");
+                    message.success(t("trade.deleted"));
                     await loadAll();
                   }}
                 >
                   <Button type="link" danger size="small" icon={<DeleteOutlined />}>
-                    删除
+                    {t("common.delete")}
                   </Button>
                 </Popconfirm>
               )
@@ -415,7 +415,7 @@ export default function TradePage() {
         title={
           <Space>
             <BulbOutlined />
-            <span>AI 交易分析</span>
+            <span>{t("trade.aiAnalysis")}</span>
           </Space>
         }
       >
@@ -428,13 +428,13 @@ export default function TradePage() {
                 : "（多笔/全选模式）"}
             </Typography.Text>
           ) : (
-            <Typography.Text type="secondary">请先在上方勾选交易（支持一笔、多笔或全选）。</Typography.Text>
+            <Typography.Text type="secondary">{t("trade.selectFirst")}</Typography.Text>
           )}
           <Button type="primary" icon={<BulbOutlined />} loading={aiLoading || replayLoading} onClick={() => void runAi()}>
-            生成 AI 分析（仅分析已选中）
+            {t("trade.runAi")}
           </Button>
-          {aiLoading ? <Spin tip="正在调用大模型，请稍候…" /> : null}
-          {replayLoading ? <Spin tip="正在检索历史相似交易与心得…" /> : null}
+          {aiLoading ? <Spin tip={t("trade.aiRunning")} /> : null}
+          {replayLoading ? <Spin tip={t("trade.replayRunning")} /> : null}
           {analyzedTradeIds.length ? (
             <Space direction="vertical" style={{ width: "100%" }}>
               {analyzedTradeIds
@@ -453,7 +453,7 @@ export default function TradePage() {
                   >
                     <Row gutter={[16, 16]}>
                       <Col xs={24} md={8}>
-                        <Typography.Title level={5}>优点</Typography.Title>
+                        <Typography.Title level={5}>{t("trade.strengths")}</Typography.Title>
                         <List
                           size="small"
                           dataSource={ai.strengths}
@@ -461,7 +461,7 @@ export default function TradePage() {
                         />
                       </Col>
                       <Col xs={24} md={8}>
-                        <Typography.Title level={5}>问题</Typography.Title>
+                        <Typography.Title level={5}>{t("trade.problems")}</Typography.Title>
                         <List
                           size="small"
                           dataSource={ai.problems}
@@ -469,7 +469,7 @@ export default function TradePage() {
                         />
                       </Col>
                       <Col xs={24} md={8}>
-                        <Typography.Title level={5}>建议</Typography.Title>
+                        <Typography.Title level={5}>{t("trade.suggestions")}</Typography.Title>
                         <List
                           size="small"
                           dataSource={ai.suggestions}
@@ -479,23 +479,23 @@ export default function TradePage() {
                     </Row>
                     {selectedTradeId === id ? (
                       <Button type="default" style={{ marginTop: 12 }} onClick={openSaveNoteModal}>
-                        将分析保存为投资笔记
+                        {t("trade.saveAsNote")}
                       </Button>
                     ) : null}
                   </Card>
                 ))}
             </Space>
           ) : (
-            !aiLoading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="生成后将在此展示" />
+            !aiLoading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("trade.showAfterGenerate")} />
           )}
           {replayResult ? (
             <Card
               size="small"
               title={
                 <Space wrap>
-                  <span>历史相似瞬间</span>
+                  <span>{t("trade.similarMoments")}</span>
                   <Tag color={replayResult.route === "history_compare" ? "green" : "default"}>
-                    {replayResult.route === "history_compare" ? "历史对照分支" : "原生分析分支"}
+                    {replayResult.route === "history_compare" ? t("trade.historyBranch") : t("trade.nativeBranch")}
                   </Tag>
                   <Tag>source={replayResult.retrieval_source}</Tag>
                   <Tag>score={replayResult.top_score.toFixed(3)}</Tag>
@@ -516,7 +516,7 @@ export default function TradePage() {
               ) : null}
               {replayResult.matched_trades.length ? (
                 <>
-                  <Typography.Title level={5}>匹配交易与历史心得</Typography.Title>
+                  <Typography.Title level={5}>{t("trade.matchedTrades")}</Typography.Title>
                   <List
                     size="small"
                     dataSource={replayResult.matched_trades}
@@ -547,20 +547,20 @@ export default function TradePage() {
         title={
           <Space wrap>
             <BookOutlined />
-            <span>投资笔记</span>
+            <span>{t("trade.notes")}</span>
             <Segmented
               value={noteView}
               onChange={(v) => persistNoteView(v as NoteViewMode)}
               options={[
-                { label: "严谨列表", value: "list" },
-                { label: "便签墙", value: "sticky" }
+                { label: t("trade.listView"), value: "list" },
+                { label: t("trade.stickyView"), value: "sticky" }
               ]}
             />
           </Space>
         }
       >
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          可手动记录复盘；若已生成 AI 分析，可使用「将分析保存为投资笔记」快速填入。
+          {t("trade.notesHint")}
         </Typography.Paragraph>
         <Form
           form={quickNoteForm}
@@ -575,7 +575,7 @@ export default function TradePage() {
               tags: values.tags || undefined,
               trade_id: tid ? Number(tid) : undefined
             });
-            message.success("笔记已保存（已附加 AI 历史关联复盘）");
+            message.success(t("trade.noteSaved"));
             quickNoteForm.resetFields();
             if (selectedTradeId != null) {
               quickNoteForm.setFieldsValue({ trade_id: String(selectedTradeId) });
@@ -585,33 +585,33 @@ export default function TradePage() {
         >
           <Row gutter={16}>
             <Col xs={24} md={8}>
-              <Form.Item label="标题" name="title" rules={[{ required: true }]}>
-                <Input placeholder="例如：本周仓位反思" />
+              <Form.Item label={t("trade.noteTitle")} name="title" rules={[{ required: true }]}>
+                <Input placeholder={t("trade.noteTitlePh")} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="关联交易 ID（可选）" name="trade_id">
-                <Input placeholder="留空或与当前选中交易一致" />
+              <Form.Item label={t("trade.noteTradeId")} name="trade_id">
+                <Input placeholder={t("trade.noteTradeIdPh")} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="标签" name="tags">
-                <Input placeholder="趋势, 仓位, 止损" />
+              <Form.Item label={t("trade.noteTags")} name="tags">
+                <Input placeholder={t("trade.noteTagsPh")} />
               </Form.Item>
             </Col>
             <Col span={24}>
-              <Form.Item label="内容" name="content" rules={[{ required: true }]}>
-                <Input.TextArea rows={4} placeholder="记录执行、情绪与改进点…" />
+              <Form.Item label={t("trade.noteContent")} name="content" rules={[{ required: true }]}>
+                <Input.TextArea rows={4} placeholder={t("trade.noteContentPh")} />
               </Form.Item>
             </Col>
           </Row>
           <Button type="primary" htmlType="submit">
-            保存笔记
+            {t("trade.saveNote")}
           </Button>
         </Form>
 
         <Typography.Title level={5} style={{ marginTop: 24 }}>
-          我的笔记
+          {t("trade.myNotes")}
         </Typography.Title>
 
         {noteView === "list" ? (
@@ -621,15 +621,15 @@ export default function TradePage() {
             pagination={{ pageSize: 6 }}
             dataSource={notes}
             columns={[
-              { title: "标题", dataIndex: "title", ellipsis: true },
+              { title: t("trade.noteTitle"), dataIndex: "title", ellipsis: true },
               {
-                title: "关联",
+                title: t("trade.link"),
                 width: 88,
                 render: (_, r) => (r.trade_id ? <Tag>#{r.trade_id}</Tag> : "—")
               },
-              { title: "标签", dataIndex: "tags", width: 140, ellipsis: true },
-              { title: "内容摘要", dataIndex: "content", ellipsis: true, render: (t: string) => (t || "").slice(0, 80) },
-              { title: "时间", dataIndex: "created_at", width: 168 }
+              { title: t("trade.noteTags"), dataIndex: "tags", width: 140, ellipsis: true },
+              { title: t("trade.summary"), dataIndex: "content", ellipsis: true, render: (txt: string) => (txt || "").slice(0, 80) },
+              { title: t("trade.time"), dataIndex: "created_at", width: 168 }
             ]}
           />
         ) : (
@@ -642,7 +642,7 @@ export default function TradePage() {
             }}
           >
             {notes.length === 0 ? (
-              <Empty description="暂无便签" />
+              <Empty description={t("trade.noSticky")} />
             ) : (
               notes.map((n) => {
                 const pal = STICKY_PALETTES[Math.abs(n.id) % STICKY_PALETTES.length];

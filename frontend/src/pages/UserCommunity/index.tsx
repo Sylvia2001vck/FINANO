@@ -7,6 +7,7 @@ import { getAgentProfile, saveAgentProfile } from "../../services/agent";
 import { getFbtiProfile, type FbtiArchetype } from "../../services/fbti";
 import { createPost, fetchPosts, likePost } from "../../services/trade";
 import { PostItem } from "../../types/trade";
+import { useT } from "../../hooks/useT";
 
 const MBTI = [
   "INTJ",
@@ -52,6 +53,7 @@ const BIRTH_TIME_SLOT_OPTIONS = [
 
 /** 用户档案 + FBTI 画像 + 社区（AI娱乐选基为侧栏独立模块 /ai-fund-pick） */
 export default function UserCommunityPage() {
+  const { t } = useT();
   const location = useLocation();
   const navigate = useNavigate();
   const [profileForm] = Form.useForm();
@@ -95,7 +97,7 @@ export default function UserCommunityPage() {
         setFbtiCode(d.fbti_profile);
         setArch(d.archetype);
       })
-      .catch(() => message.warning("读取 FBTI 失败"))
+      .catch(() => message.warning(t("community.fbtiLoadFailed")))
       .finally(() => setFbtiLoading(false));
   }, []);
 
@@ -114,7 +116,7 @@ export default function UserCommunityPage() {
 
   return (
     <div className="page-stack">
-      <Typography.Title level={3}>用户与社区</Typography.Title>
+      <Typography.Title level={3}>{t("community.title")}</Typography.Title>
       <Typography.Paragraph type="secondary">
         <strong>用户档案</strong>（MAFB 用画像）→ <strong>FBTI 金融人格</strong> → <strong>社区</strong>。
         趣味向选基请使用侧栏「<Link to="/ai-fund-pick">AI娱乐选基</Link>」独立入口。
